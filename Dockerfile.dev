@@ -1,0 +1,53 @@
+# single image, single toolchain (nightly only)
+FROM rustlang/rust:nightly-slim
+
+WORKDIR /app
+
+# system deps
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    postgresql-client \
+    curl \
+    xz-utils \
+    ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# watchexec (static binary)
+ENV WATCHEXEC_VERSION=1.23.0
+RUN curl -L "https://github.com/watchexec/watchexec/releases/download/v${WATCHEXEC_VERSION}/watchexec-${WATCHEXEC_VERSION}-x86_64-unknown-linux-musl.tar.xz" \
+  -o /tmp/watchexec.tar.xz \
+  && mkdir -p /tmp/watchexec \
+  && tar -xf /tmp/watchexec.tar.xz -C /tmp/watchexec \
+  && mv /tmp/watchexec/watchexec-${WATCHEXEC_VERSION}-x86_64-unknown-linux-musl/watchexec /usr/local/bin/watchexec \
+  && chmod +x /usr/local/bin/watchexec \
+  && rm -rf /tmp/watchexec /tmp/watchexec.tar.xz
+
+# ensure cargo picks nightly (already present in this image)
+ENV RUSTUP_TOOLCHAIN=nightly
+
+# warm build cache once (no rustup, no extra toolchains)
+RUN mkdir -p src && echo "fn main() {}" > src/main.rs && cargo build --release || true
+
+# real source
+COPY . .
+
+ENV RUST_LOG=debug \
+    RUST_BACKTRACE=1 \
+    HOST=0.0.0.0 \
+    PORT=8080
+
+EXPOSE 8080
+CMD ["watchexec",
+     "--restart",
+     "--debounce","250ms",
+     "--watch","src",
+     "--watch","migrations",
+     "--watch","Cargo.toml",
+     "--exts","rs,toml",
+     "--ignore","target",
+     "--ignore",".git",
+     "--",
+     "cargo","run"]
+
