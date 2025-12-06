@@ -10,6 +10,37 @@
     .row{display:flex;align-items:center;gap:14px}
     .pic{width:72px;height:72px;border-radius:50%;object-fit:cover;background:#222}
     .muted{opacity:.7}
+
+    /* NEW: compact Telegram identity pill */
+    .user-row{
+        justify-content:space-between;
+        min-width:260px;
+    }
+    .tg-pill{
+        display:inline-flex;
+        align-items:center;
+        gap:10px;
+        padding:8px 14px;
+        border-radius:999px;
+        background:#2AABEE; /* TG blue */
+        color:#fff;
+        font-weight:500;
+        font-size:15px;
+    }
+    .tg-icon{
+        display:inline-flex;
+        width:22px;
+        height:22px;
+        border-radius:50%;
+        background:rgba(0,0,0,.18);
+        align-items:center;
+        justify-content:center;
+    }
+    .tg-icon svg{
+        width:14px;
+        height:14px;
+        display:block;
+    }
 </style>
 
 <body>
@@ -17,64 +48,148 @@
     <div class="card">
         <div id="content">
             <h1>Sign in with Telegram</h1>
-            <p class="muted">We only need your public profile (name & photo).</p>
+            <p class="muted">We only need your public profile (name &amp; photo).</p>
             <div id="tg-login"></div>
         </div>
+        <div id="ton-connect"></div>
+        <pre id="wallet-info" class="muted" style="margin-top:12px;font-size:13px"></pre>
     </div>
 </div>
 
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script>
-    (async () => {
-        const BOT = 'expert_hub_bot'; // no @
+<!-- TON CONNECT UI -->
+<script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
 
-        // 1) Mini App path (unchanged) …
+<!-- TELEGRAM WEBAPP SDK (for MiniApp) -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<script>
+    console.log('content js');
+
+    const BOT = 'expert_hub_bot'; // no @
+    const ORIGIN = 'https://uncategorical-interradially-dawson.ngrok-free.dev'; // must match BotFather /setdomain
+
+    function renderUser(u) {
+        const fullName = [u.first_name || '', u.last_name || ''].join(' ').trim();
+
+        document.getElementById('content').innerHTML =
+            `<div class="row user-row">
+            <div class="tg-pill">
+                <span class="tg-icon">
+                    <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M120 0C53.7 0 0 53.7 0 120s53.7 120 120 120 120-53.7 120-120S186.3 0 120 0z" fill="none"/>
+                        <path d="M179.6 71.3L160.4 168c-1.4 7.3-5.6 9.1-11.3 5.7l-31.3-23.1-15.1 14.6c-1.7 1.7-3.1 3.1-6.4 3.1l2.3-32.4 58.9-53.2c2.6-2.3-0.6-3.6-4-1.3l-72.8 45.9-31.4-9.8c-6.8-2.1-7-6.7 1.4-10l122.7-47.3c5.7-2.1 10.6 1.3 8.8 9.1z"
+                              fill="#ffffff"/>
+                    </svg>
+                </span>
+                <span>${fullName || 'Telegram user'}</span>
+            </div>
+            <img class="pic" src="${u.photo_url || ''}" alt="">
+        </div>`;
+    }
+
+    (async () => {
+        /* ---------- detect MiniApp vs Web ---------- */
         const wa = window.Telegram && window.Telegram.WebApp;
-        const miniUser = wa?.initDataUnsafe?.user;
+        const miniUser = wa?.initDataUnsafe?.user || null;
+
+        /* ---------- TON Connect (works in both) ---------- */
+        const telegramId = miniUser?.id ?? null;
+        const MANIFEST_URL = `https://skachurin.github.io/expert-hub-manifests/tonconnect-manifest.json`;
+
+        const tonUi = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: MANIFEST_URL,
+            buttonRootId: 'ton-connect'
+        });
+
+        await tonUi.connectionRestored;
+
+        const walletInfoEl = document.getElementById('wallet-info');
+
+        function renderWalletStatus(wallet) {
+            if (!wallet) {
+                walletInfoEl.textContent = 'Wallet: not connected';
+                return;
+            }
+
+            const addr = wallet.account.address;
+            const chain = wallet.account.chain;
+            walletInfoEl.textContent = `Wallet connected: ${addr} (chain ${chain})`;
+
+            fetch('/link-wallet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    address: addr,
+                    chain,
+                    telegram_id: telegramId,
+                })
+            }).catch(console.error);
+        }
+
+        tonUi.onStatusChange(renderWalletStatus);
+        renderWalletStatus(tonUi.wallet);
+
+        /* ---------- TELEGRAM AUTH ---------- */
+
+        // 1) MINIAPP: we already have user from initDataUnsafe
         if (miniUser) {
-            renderUser({ first_name: miniUser.first_name, last_name: miniUser.last_name, photo_url: miniUser.photo_url });
+            console.log('MiniApp user:', miniUser);
+            // OPTIONAL: send wa.initData to backend for HMAC validation
+            renderUser({
+                first_name: miniUser.first_name,
+                last_name: miniUser.last_name,
+                username: miniUser.username,
+                photo_url: miniUser.photo_url
+            });
             return;
         }
 
-        // 2) Browser path — HARDCODE ORIGIN HERE
-        const ORIGIN = 'https://uncategorical-interradially-dawson.ngrok-free.dev'; // must match BotFather /setdomain
+        // 2) WEB: use Login Widget via iframe, listen for auth_user
         const hostEl = document.getElementById('tg-login');
-
         const iframe = document.createElement('iframe');
         iframe.src = `https://oauth.telegram.org/embed/${BOT}?origin=${encodeURIComponent(ORIGIN)}&request_access=write&embed=1`;
-        iframe.width = 220;
+        iframe.width = 360;
         iframe.height = 54;
         iframe.style.border = '0';
         iframe.style.overflow = 'hidden';
         iframe.setAttribute('scrolling', 'no');
         hostEl.appendChild(iframe);
 
-        // receive auth result …
         window.addEventListener('message', async (e) => {
             if (e.origin !== 'https://oauth.telegram.org') return;
-            const payload = e.data;
-            if (payload?.event === 'auth_result' && payload.result) {
+
+            console.log('TG LOGIN EVENT RAW', typeof e.data, e.data);
+
+            let payload = e.data;
+            if (typeof payload === 'string') {
+                try {
+                    payload = JSON.parse(payload);
+                } catch (err) {
+                    console.error('Failed to parse Telegram payload', err);
+                    return;
+                }
+            }
+
+            console.log('TG LOGIN EVENT PARSED', payload);
+
+            if (payload?.event === 'auth_user' && payload.auth_data) {
                 const r = await fetch('/tg-auth', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload.result),
+                    body: JSON.stringify(payload.auth_data),
                 });
-                if (!r.ok) return alert('Telegram login verification failed');
+
+                console.log('TG /tg-auth STATUS', r.status);
+
+                if (!r.ok) {
+                    alert('Telegram login verification failed');
+                    return;
+                }
+
                 const user = await r.json();
-                renderUser(user);
+                renderUser(user); // <-- card switches to TG pill + photo
             }
         });
-
-        function renderUser(u) {
-            document.getElementById('content').innerHTML =
-                `<div class="row">
-           <img class="pic" src="${u.photo_url || ''}" alt="">
-           <div>
-             <div style="font-size:20px;font-weight:600">${(u.first_name||'')+' '+(u.last_name||'')}</div>
-             <div class="muted">${u.username ? '@'+u.username : ''}</div>
-           </div>
-         </div>`;
-        }
     })();
 </script>
 </body>

@@ -39,15 +39,5 @@ ENV RUST_LOG=debug \
     PORT=8080
 
 EXPOSE 8080
-CMD ["watchexec",
-     "--restart",
-     "--debounce","250ms",
-     "--watch","src",
-     "--watch","migrations",
-     "--watch","Cargo.toml",
-     "--exts","rs,toml",
-     "--ignore","target",
-     "--ignore",".git",
-     "--",
-     "cargo","run"]
 
+CMD ["watchexec", "--restart", "--debounce", "250ms", "--watch", "src", "--watch", "migrations", "--watch", "Cargo.toml", "--exts", "rs,toml", "--ignore", "target", "--ignore", ".git", "--", "cargo", "run"]

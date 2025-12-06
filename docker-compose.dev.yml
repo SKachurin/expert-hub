@@ -1,6 +1,5 @@
-#docker-compose -f docker-compose.dev.yml --env-file .env.local up -d
-version: '3.8'
-
+#docker-compose -f docker-compose.dev.yml --env-file .env.local build --no-cache
+#docker compose -f docker-compose.dev.yml --env-file .env.local down --remove-orphans --volumes
 services:
   app:
     build:
@@ -34,7 +33,7 @@ services:
         - action: rebuild
           path: Cargo.toml
   ngrok:
-    #docker compose -f docker-compose.dev.yml --env-file .env.local up -d ngrok
+    #url https://uncategorical-interradially-dawson.ngrok-free.dev/
     image: ngrok/ngrok:latest
     depends_on:
       - app
