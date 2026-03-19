@@ -1,196 +1,356 @@
 <!doctype html>
 <html lang="en">
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Auth demo</title>
-<style>
-    html,body{height:100%;margin:0;background:#000;color:#fff;font:16px/1.5 system-ui,Segoe UI,Roboto}
-    .wrap{min-height:100%;display:grid;place-items:center;padding:24px}
-    .card{background:#111;border-radius:18px;padding:28px 32px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
-    .row{display:flex;align-items:center;gap:14px}
-    .pic{width:72px;height:72px;border-radius:50%;object-fit:cover;background:#222}
-    .muted{opacity:.7}
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+    <title>Expert Hub</title>
 
-    /* NEW: compact Telegram identity pill */
-    .user-row{
-        justify-content:space-between;
-        min-width:260px;
-    }
-    .tg-pill{
-        display:inline-flex;
-        align-items:center;
-        gap:10px;
-        padding:8px 14px;
-        border-radius:999px;
-        background:#2AABEE; /* TG blue */
-        color:#fff;
-        font-weight:500;
-        font-size:15px;
-    }
-    .tg-icon{
-        display:inline-flex;
-        width:22px;
-        height:22px;
-        border-radius:50%;
-        background:rgba(0,0,0,.18);
-        align-items:center;
-        justify-content:center;
-    }
-    .tg-icon svg{
-        width:14px;
-        height:14px;
-        display:block;
-    }
-</style>
+    <style>
+        :root {
+            --bg: #05070b;
+            --bg-2: #0b0f16;
+            --panel: rgba(18, 23, 34, 0.92);
+            --panel-2: rgba(14, 18, 27, 0.96);
+            --line: rgba(255, 255, 255, 0.08);
+            --text: #f4f7fb;
+            --muted: #97a3b6;
+            --muted-2: #7f8a9a;
+            --accent: #56a8f5;
+            --accent-2: #2aabee;
+            --shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+            --radius-xl: 28px;
+            --radius-lg: 22px;
+            --radius-md: 16px;
+            --radius-pill: 999px;
+        }
 
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+            background:
+                    radial-gradient(1100px 520px at 50% -10%, rgba(86, 168, 245, 0.16), transparent 55%),
+                    radial-gradient(900px 460px at 100% 0%, rgba(42, 171, 238, 0.08), transparent 50%),
+                    linear-gradient(180deg, #070b12 0%, #04060a 100%);
+            color: var(--text);
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+        body {
+            min-height: 100vh;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 460px;
+            margin: 0 auto;
+            min-height: 100vh;
+            padding:
+                    max(18px, env(safe-area-inset-top))
+                    16px
+                    max(24px, env(safe-area-inset-bottom) + 10px);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .hero {
+            padding: 12px 4px 6px;
+        }
+
+        .eyebrow {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: 34px;
+            line-height: 1.02;
+            letter-spacing: -0.035em;
+            font-weight: 800;
+        }
+
+        .hero p {
+            margin: 12px 0 0;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.55;
+            max-width: 34ch;
+        }
+
+        .panel {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .search-card,
+        .categories-card,
+        .cta-card,
+        .placeholder-card {
+            padding: 18px;
+        }
+
+        .section-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .section-note {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .search-mock {
+            margin-top: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: var(--muted);
+        }
+
+        .search-icon {
+            width: 20px;
+            height: 20px;
+            flex: 0 0 auto;
+            opacity: .88;
+        }
+
+        .search-text {
+            font-size: 15px;
+        }
+
+        .chips {
+            margin-top: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .chip:visited {
+            color: var(--text);
+        }
+
+        .chip:active {
+            transform: translateY(1px);
+        }
+
+        .cta-main {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .btn {
+            appearance: none;
+            width: 100%;
+            border: 0;
+            border-radius: 18px;
+            padding: 16px 18px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font: inherit;
+            font-weight: 800;
+            transition: transform .15s ease, opacity .15s ease, background .15s ease;
+        }
+
+        .btn:visited {
+            color: inherit;
+        }
+
+        .btn:active {
+            transform: translateY(1px) scale(0.995);
+        }
+
+        .btn-primary {
+            color: #fff;
+            background: linear-gradient(180deg, #61b4ff 0%, #479df0 100%);
+            box-shadow: 0 14px 30px rgba(71, 157, 240, 0.28);
+        }
+
+        .btn-secondary {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--line);
+        }
+
+        .mini-list {
+            margin-top: 14px;
+            display: grid;
+            gap: 10px;
+        }
+
+        .mini-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.025);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .mini-left {
+            min-width: 0;
+        }
+
+        .mini-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .mini-sub {
+            margin-top: 2px;
+            font-size: 12px;
+            color: var(--muted-2);
+        }
+
+        .mini-state {
+            flex: 0 0 auto;
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--muted);
+        }
+
+        .foot-note {
+            color: var(--muted-2);
+            font-size: 12px;
+            line-height: 1.5;
+            padding: 2px 4px 0;
+            text-align: center;
+        }
+
+        @media (min-width: 480px) {
+            .app {
+                padding-left: 18px;
+                padding-right: 18px;
+            }
+        }
+    </style>
+</head>
 <body>
-<div class="wrap">
-    <div class="card">
-        <div id="content">
-            <h1>Sign in with Telegram</h1>
-            <p class="muted">We only need your public profile (name &amp; photo).</p>
-            <div id="tg-login"></div>
+<div class="app">
+    <section class="hero">
+        <div class="eyebrow">Marketplace</div>
+        <h1>Find the right expert</h1>
+        <p>Browse by topic, search later, or register yourself as an expert and create your public page.</p>
+    </section>
+
+    <section class="panel search-card">
+        <h2 class="section-title">Search</h2>
+        <p class="section-note">Search UI placeholder for future expert discovery.</p>
+
+        <div class="search-mock" aria-label="Search placeholder">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span class="search-text">Search experts, topics, or situations</span>
         </div>
-        <div id="ton-connect"></div>
-        <pre id="wallet-info" class="muted" style="margin-top:12px;font-size:13px"></pre>
-    </div>
-</div>
+    </section>
 
-<!-- TON CONNECT UI -->
-<script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    <section class="panel categories-card">
+        <h2 class="section-title">Browse categories</h2>
+        <p class="section-note">Main marketplace directions for the first discovery screen.</p>
 
-<!-- TELEGRAM WEBAPP SDK (for MiniApp) -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <div class="chips">
+            <a class="chip" href="#">Psychology</a>
+            <a class="chip" href="#">Finance</a>
+            <a class="chip" href="#">Relationships</a>
+            <a class="chip" href="#">Nutrition</a>
+            <a class="chip" href="#">Career</a>
+            <a class="chip" href="#">Fitness</a>
+            <a class="chip" href="#">Legal</a>
+            <a class="chip" href="#">Business</a>
+            <a class="chip" href="#">Parenting</a>
+            <a class="chip" href="#">Productivity</a>
+        </div>
+    </section>
 
-<script>
-    console.log('content js');
-
-    const BOT = 'expert_hub_bot'; // no @
-    const ORIGIN = 'https://uncategorical-interradially-dawson.ngrok-free.dev'; // must match BotFather /setdomain
-
-    function renderUser(u) {
-        const fullName = [u.first_name || '', u.last_name || ''].join(' ').trim();
-
-        document.getElementById('content').innerHTML =
-            `<div class="row user-row">
-            <div class="tg-pill">
-                <span class="tg-icon">
-                    <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M120 0C53.7 0 0 53.7 0 120s53.7 120 120 120 120-53.7 120-120S186.3 0 120 0z" fill="none"/>
-                        <path d="M179.6 71.3L160.4 168c-1.4 7.3-5.6 9.1-11.3 5.7l-31.3-23.1-15.1 14.6c-1.7 1.7-3.1 3.1-6.4 3.1l2.3-32.4 58.9-53.2c2.6-2.3-0.6-3.6-4-1.3l-72.8 45.9-31.4-9.8c-6.8-2.1-7-6.7 1.4-10l122.7-47.3c5.7-2.1 10.6 1.3 8.8 9.1z"
-                              fill="#ffffff"/>
-                    </svg>
-                </span>
-                <span>${fullName || 'Telegram user'}</span>
+    <section class="panel cta-card">
+        <div class="cta-main">
+            <div>
+                <h2 class="section-title">Become an expert</h2>
+                <p class="section-note">Connect Telegram, connect wallet, and create your expert profile.</p>
             </div>
-            <img class="pic" src="${u.photo_url || ''}" alt="">
-        </div>`;
-    }
 
-    (async () => {
-        /* ---------- detect MiniApp vs Web ---------- */
-        const wa = window.Telegram && window.Telegram.WebApp;
-        const miniUser = wa?.initDataUnsafe?.user || null;
+            <a class="btn btn-primary" href="/expert-new.html">Register as an Expert</a>
+        </div>
+    </section>
 
-        /* ---------- TON Connect (works in both) ---------- */
-        const telegramId = miniUser?.id ?? null;
-        const MANIFEST_URL = `https://skachurin.github.io/expert-hub-manifests/tonconnect-manifest.json`;
+    <section class="panel placeholder-card">
+        <h2 class="section-title">Coming next</h2>
+        <p class="section-note">This is the marketplace shell. Discovery and expert lists come after onboarding flow is wired into routes and DB.</p>
 
-        const tonUi = new TON_CONNECT_UI.TonConnectUI({
-            manifestUrl: MANIFEST_URL,
-            buttonRootId: 'ton-connect'
-        });
+        <div class="mini-list">
+            <div class="mini-row">
+                <div class="mini-left">
+                    <div class="mini-title">Popular experts</div>
+                    <div class="mini-sub">Featured cards will appear here later</div>
+                </div>
+                <div class="mini-state">Soon</div>
+            </div>
 
-        await tonUi.connectionRestored;
+            <div class="mini-row">
+                <div class="mini-left">
+                    <div class="mini-title">Category pages</div>
+                    <div class="mini-sub">Subcategories and filtered browsing</div>
+                </div>
+                <div class="mini-state">Soon</div>
+            </div>
 
-        const walletInfoEl = document.getElementById('wallet-info');
+            <div class="mini-row">
+                <div class="mini-left">
+                    <div class="mini-title">Search results</div>
+                    <div class="mini-sub">Real search after expert records exist</div>
+                </div>
+                <div class="mini-state">Soon</div>
+            </div>
+        </div>
+    </section>
 
-        function renderWalletStatus(wallet) {
-            if (!wallet) {
-                walletInfoEl.textContent = 'Wallet: not connected';
-                return;
-            }
-
-            const addr = wallet.account.address;
-            const chain = wallet.account.chain;
-            walletInfoEl.textContent = `Wallet connected: ${addr} (chain ${chain})`;
-
-            fetch('/link-wallet', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    address: addr,
-                    chain,
-                    telegram_id: telegramId,
-                })
-            }).catch(console.error);
-        }
-
-        tonUi.onStatusChange(renderWalletStatus);
-        renderWalletStatus(tonUi.wallet);
-
-        /* ---------- TELEGRAM AUTH ---------- */
-
-        // 1) MINIAPP: we already have user from initDataUnsafe
-        if (miniUser) {
-            console.log('MiniApp user:', miniUser);
-            // OPTIONAL: send wa.initData to backend for HMAC validation
-            renderUser({
-                first_name: miniUser.first_name,
-                last_name: miniUser.last_name,
-                username: miniUser.username,
-                photo_url: miniUser.photo_url
-            });
-            return;
-        }
-
-        // 2) WEB: use Login Widget via iframe, listen for auth_user
-        const hostEl = document.getElementById('tg-login');
-        const iframe = document.createElement('iframe');
-        iframe.src = `https://oauth.telegram.org/embed/${BOT}?origin=${encodeURIComponent(ORIGIN)}&request_access=write&embed=1`;
-        iframe.width = 360;
-        iframe.height = 54;
-        iframe.style.border = '0';
-        iframe.style.overflow = 'hidden';
-        iframe.setAttribute('scrolling', 'no');
-        hostEl.appendChild(iframe);
-
-        window.addEventListener('message', async (e) => {
-            if (e.origin !== 'https://oauth.telegram.org') return;
-
-            console.log('TG LOGIN EVENT RAW', typeof e.data, e.data);
-
-            let payload = e.data;
-            if (typeof payload === 'string') {
-                try {
-                    payload = JSON.parse(payload);
-                } catch (err) {
-                    console.error('Failed to parse Telegram payload', err);
-                    return;
-                }
-            }
-
-            console.log('TG LOGIN EVENT PARSED', payload);
-
-            if (payload?.event === 'auth_user' && payload.auth_data) {
-                const r = await fetch('/tg-auth', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload.auth_data),
-                });
-
-                console.log('TG /tg-auth STATUS', r.status);
-
-                if (!r.ok) {
-                    alert('Telegram login verification failed');
-                    return;
-                }
-
-                const user = await r.json();
-                renderUser(user); // <-- card switches to TG pill + photo
-            }
-        });
-    })();
-</script>
+    <div class="foot-note">Expert Hub marketplace shell. Onboarding lives on the separate expert registration page.</div>
+</div>
 </body>
 </html>
