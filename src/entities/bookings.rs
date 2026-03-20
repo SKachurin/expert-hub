@@ -1,4 +1,4 @@
-use super::{calendar_connections, experts};
+use super::{calendar_connections, experts, payments, telegram_call_events};
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
@@ -35,6 +35,10 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     CalendarConnection,
+    #[sea_orm(has_many = "payments::Entity")]
+    Payments,
+    #[sea_orm(has_many = "telegram_call_events::Entity")]
+    TelegramCallEvents,
 }
 
 impl Related<experts::Entity> for Entity {
@@ -46,6 +50,18 @@ impl Related<experts::Entity> for Entity {
 impl Related<calendar_connections::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::CalendarConnection.def()
+    }
+}
+
+impl Related<payments::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Payments.def()
+    }
+}
+
+impl Related<telegram_call_events::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TelegramCallEvents.def()
     }
 }
 

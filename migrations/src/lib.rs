@@ -8,6 +8,8 @@ mod m20260319_000005_create_reviews_table;
 mod m20260319_000006_create_bookings_table;
 mod m20260319_000007_create_expert_tags_table;
 mod m20260319_000008_create_expert_categories_table;
+mod m20260320_000009_create_payments_table;
+mod m20260320_000010_create_telegram_call_events_table;
 
 pub struct Migrator;
 
@@ -23,6 +25,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260319_000006_create_bookings_table::Migration),
             Box::new(m20260319_000007_create_expert_tags_table::Migration),
             Box::new(m20260319_000008_create_expert_categories_table::Migration),
+            Box::new(m20260320_000009_create_payments_table::Migration),
+            Box::new(m20260320_000010_create_telegram_call_events_table::Migration),
         ]
     }
 }

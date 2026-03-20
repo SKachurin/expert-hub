@@ -9,50 +9,48 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Bookings::Table)
+                    .table(Payments::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(Bookings::Id)
+                        ColumnDef::new(Payments::Id)
                             .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Bookings::ExpertId).big_integer().not_null())
-                    .col(ColumnDef::new(Bookings::CalendarId).big_integer().not_null())
+                    .col(ColumnDef::new(Payments::BookingId).big_integer().not_null())
+                    .col(ColumnDef::new(Payments::ExpertId).big_integer().not_null())
                     .col(
-                        ColumnDef::new(Bookings::RequestedByTelegramId)
+                        ColumnDef::new(Payments::CustomerTelegramId)
                             .big_integer()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(Bookings::SlotStart)
-                            .timestamp_with_time_zone()
+                        ColumnDef::new(Payments::Amount)
+                            .decimal()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(Bookings::SlotEnd)
-                            .timestamp_with_time_zone()
+                        ColumnDef::new(Payments::Currency)
+                            .string_len(8)
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(Bookings::Status)
+                        ColumnDef::new(Payments::Status)
                             .string_len(32)
-                            .not_null()
-                            .default("requested"),
+                            .not_null(),
                     )
+                    .col(ColumnDef::new(Payments::TonWalletCustomer).string())
+                    .col(ColumnDef::new(Payments::TonWalletExpert).string())
+                    .col(ColumnDef::new(Payments::ContractAddress).string())
+                    .col(ColumnDef::new(Payments::TransactionRef).string())
                     .col(
-                        ColumnDef::new(Bookings::ExpiresAt)
+                        ColumnDef::new(Payments::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(Bookings::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Bookings::UpdatedAt)
+                        ColumnDef::new(Payments::UpdatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
@@ -63,8 +61,20 @@ impl MigrationTrait for Migration {
         manager
             .create_foreign_key(
                 ForeignKey::create()
-                    .name("fk_bookings_expert_id")
-                    .from(Bookings::Table, Bookings::ExpertId)
+                    .name("fk_payments_booking_id")
+                    .from(Payments::Table, Payments::BookingId)
+                    .to(Bookings::Table, Bookings::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_payments_expert_id")
+                    .from(Payments::Table, Payments::ExpertId)
                     .to(Experts::Table, Experts::Id)
                     .on_delete(ForeignKeyAction::Cascade)
                     .on_update(ForeignKeyAction::Cascade)
@@ -73,13 +83,11 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_bookings_calendar_id")
-                    .from(Bookings::Table, Bookings::CalendarId)
-                    .to(CalendarConnections::Table, CalendarConnections::Id)
-                    .on_delete(ForeignKeyAction::Cascade)
-                    .on_update(ForeignKeyAction::Cascade)
+            .create_index(
+                Index::create()
+                    .name("idx_payments_booking_id")
+                    .table(Payments::Table)
+                    .col(Payments::BookingId)
                     .to_owned(),
             )
             .await?;
@@ -87,9 +95,9 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_bookings_expert_id")
-                    .table(Bookings::Table)
-                    .col(Bookings::ExpertId)
+                    .name("idx_payments_expert_id")
+                    .table(Payments::Table)
+                    .col(Payments::ExpertId)
                     .to_owned(),
             )
             .await?;
@@ -97,9 +105,9 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_bookings_calendar_id")
-                    .table(Bookings::Table)
-                    .col(Bookings::CalendarId)
+                    .name("idx_payments_customer_telegram_id")
+                    .table(Payments::Table)
+                    .col(Payments::CustomerTelegramId)
                     .to_owned(),
             )
             .await?;
@@ -107,19 +115,9 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_bookings_requested_by_telegram_id")
-                    .table(Bookings::Table)
-                    .col(Bookings::RequestedByTelegramId)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_bookings_status")
-                    .table(Bookings::Table)
-                    .col(Bookings::Status)
+                    .name("idx_payments_status")
+                    .table(Payments::Table)
+                    .col(Payments::Status)
                     .to_owned(),
             )
             .await?;
@@ -129,34 +127,37 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Bookings::Table).to_owned())
+            .drop_table(Table::drop().table(Payments::Table).to_owned())
             .await
     }
+}
+
+#[derive(DeriveIden)]
+enum Payments {
+    Table,
+    Id,
+    BookingId,
+    ExpertId,
+    CustomerTelegramId,
+    Amount,
+    Currency,
+    Status,
+    TonWalletCustomer,
+    TonWalletExpert,
+    ContractAddress,
+    TransactionRef,
+    CreatedAt,
+    UpdatedAt,
 }
 
 #[derive(DeriveIden)]
 enum Bookings {
     Table,
     Id,
-    ExpertId,
-    CalendarId,
-    RequestedByTelegramId,
-    SlotStart,
-    SlotEnd,
-    Status,
-    ExpiresAt,
-    CreatedAt,
-    UpdatedAt,
 }
 
 #[derive(DeriveIden)]
 enum Experts {
-    Table,
-    Id,
-}
-
-#[derive(DeriveIden)]
-enum CalendarConnections {
     Table,
     Id,
 }

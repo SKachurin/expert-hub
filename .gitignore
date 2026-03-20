@@ -1,2 +1,4 @@
 .env.local
 .idea
+/target
+/migrations/target

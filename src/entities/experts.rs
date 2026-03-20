@@ -1,8 +1,9 @@
 use super::{
-    calendar_connections, expert_categories, expert_tags, reviews,
+    bookings, calendar_connections, expert_categories, expert_tags, payments, reviews,
+    telegram_call_events,
 };
-use sea_orm::entity::prelude::*;
 use rust_decimal::Decimal;
+use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "experts")]
@@ -49,6 +50,12 @@ pub enum Relation {
     ExpertTags,
     #[sea_orm(has_many = "expert_categories::Entity")]
     ExpertCategories,
+    #[sea_orm(has_many = "bookings::Entity")]
+    Bookings,
+    #[sea_orm(has_many = "payments::Entity")]
+    Payments,
+    #[sea_orm(has_many = "telegram_call_events::Entity")]
+    TelegramCallEvents,
 }
 
 impl Related<calendar_connections::Entity> for Entity {
@@ -72,6 +79,24 @@ impl Related<expert_tags::Entity> for Entity {
 impl Related<expert_categories::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ExpertCategories.def()
+    }
+}
+
+impl Related<bookings::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Bookings.def()
+    }
+}
+
+impl Related<payments::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Payments.def()
+    }
+}
+
+impl Related<telegram_call_events::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TelegramCallEvents.def()
     }
 }
 

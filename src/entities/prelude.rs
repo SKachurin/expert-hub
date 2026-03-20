@@ -4,5 +4,7 @@ pub use super::categories::Entity as Categories;
 pub use super::expert_categories::Entity as ExpertCategories;
 pub use super::expert_tags::Entity as ExpertTags;
 pub use super::experts::Entity as Experts;
+pub use super::payments::Entity as Payments;
 pub use super::reviews::Entity as Reviews;
 pub use super::tags::Entity as Tags;
+pub use super::telegram_call_events::Entity as TelegramCallEvents;
