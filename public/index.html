@@ -269,6 +269,8 @@
             }
         }
     </style>
+
+    <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
 </head>
 <body>
 <div class="app">
@@ -315,7 +317,7 @@
                 <p class="section-note">Connect Telegram, connect wallet, and create your expert profile.</p>
             </div>
 
-            <a class="btn btn-primary" href="/expert-new.html">Register as an Expert</a>
+            <a id="register-expert-btn" class="btn btn-primary" href="/expert-new.html">Register as an Expert</a>
         </div>
     </section>
 
@@ -352,5 +354,53 @@
 
     <div class="foot-note">Expert Hub marketplace shell. Onboarding lives on the separate expert registration page.</div>
 </div>
+
+<script>
+    const registerExpertBtn = document.getElementById('register-expert-btn');
+
+    function saveTelegramMiniAppUser() {
+        const tg = window.Telegram?.WebApp;
+        const miniUser = tg?.initDataUnsafe?.user || null;
+
+        if (!miniUser) {
+            sessionStorage.removeItem('expertHubTelegramUser');
+            return null;
+        }
+
+        const user = {
+            id: miniUser.id,
+            first_name: miniUser.first_name || '',
+            last_name: miniUser.last_name || '',
+            username: miniUser.username || '',
+            photo_url: miniUser.photo_url || ''
+        };
+
+        sessionStorage.setItem('expertHubTelegramUser', JSON.stringify(user));
+        return user;
+    }
+
+    function initIndexTelegramState() {
+        const tg = window.Telegram?.WebApp;
+
+        if (!tg) {
+            return;
+        }
+
+        try {
+            tg.ready();
+            tg.expand();
+        } catch (e) {
+            console.error('Telegram WebApp init error on index:', e);
+        }
+
+        saveTelegramMiniAppUser();
+    }
+
+    registerExpertBtn.addEventListener('click', function () {
+        saveTelegramMiniAppUser();
+    });
+
+    initIndexTelegramState();
+</script>
 </body>
 </html>

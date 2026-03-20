@@ -455,7 +455,27 @@
                 padding-right: 18px;
             }
         }
+        .telegram-login-slot {
+            margin-top: 12px;
+            min-height: 44px;
+        }
+
+        .telegram-open-link {
+            display: inline-flex;
+            align-items: center;
+            margin-top: 10px;
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .telegram-open-link:visited {
+            color: var(--muted);
+        }
     </style>
+
+    <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
 </head>
 <body>
 <div class="app">
@@ -551,7 +571,7 @@
 </div>
 
 <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!--<script src="https://telegram.org/js/telegram-web-app.js"></script>-->
 
 <script>
     const BOT = 'expert_hub_bot';
@@ -566,6 +586,7 @@
     const debugStatusEl = document.getElementById('debug-status');
     const stepTelegramEl = document.getElementById('step-telegram');
     const stepWalletEl = document.getElementById('step-wallet');
+    const TG_APP_LINK = 'https://t.me/expert_hub_bot?startapp=expert_new';
 
     let currentTelegramUser = null;
     let currentWallet = null;
@@ -623,29 +644,62 @@
         el.classList.toggle('ok', !!ok);
     }
 
+    function saveTelegramUserToSession(user) {
+        if (!user) return;
+
+        sessionStorage.setItem('expertHubTelegramUser', JSON.stringify({
+            id: user.id,
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            username: user.username || '',
+            photo_url: user.photo_url || ''
+        }));
+    }
+
+    function loadTelegramUserFromSession() {
+        try {
+            const raw = sessionStorage.getItem('expertHubTelegramUser');
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw);
+
+            if (!parsed || !parsed.id) {
+                return null;
+            }
+
+            return parsed;
+        } catch (e) {
+            console.error('Failed to read Telegram user from sessionStorage:', e);
+            return null;
+        }
+    }
+
     function renderProfileCard(user) {
         if (!user) {
             profileCardEl.innerHTML = `
             <div class="profile-top">
                 <div class="avatar avatar-placeholder">${escapeHtml(initialsFromUser(null))}</div>
                 <div class="profile-copy">
-                    <a
-                        class="identity-pill identity-link"
-                        href="https://t.me/${BOT}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        <span class="identity-icon">${telegramIconSvg()}</span>
-                        <span>Connect Telegram</span>
-                    </a>
+                    <div id="telegram-login-slot" class="telegram-login-slot"></div>
+
                     <div class="profile-sub">
                         <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);display:inline-block;"></span>
                         Telegram account not connected
                     </div>
+
+                    <a
+                        class="telegram-open-link"
+                        href="${TG_APP_LINK}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        Open in Telegram
+                    </a>
                 </div>
             </div>
         `;
 
+            mountTelegramLoginWidget();
             setStepState(stepTelegramEl, 'Pending', false);
             return;
         }
@@ -672,6 +726,50 @@
 
         setStepState(stepTelegramEl, 'Connected', true);
     }
+
+    function mountTelegramLoginWidget() {
+        const hostEl = document.getElementById('telegram-login-slot');
+        if (!hostEl) return;
+
+        hostEl.innerHTML = '';
+
+        const iframe = document.createElement('iframe');
+        iframe.src = `https://oauth.telegram.org/embed/${BOT}?origin=${encodeURIComponent(PUBLIC_ORIGIN)}&request_access=write&embed=1`;
+        iframe.width = 360;
+        iframe.height = 54;
+        iframe.style.border = '0';
+        iframe.style.overflow = 'hidden';
+        iframe.setAttribute('scrolling', 'no');
+
+        hostEl.appendChild(iframe);
+    }
+
+
+    window.handleTelegramAuth = async function (user) {
+        try {
+            setDebugStatus('Telegram auth received. Verifying...');
+
+            const r = await fetch('/tg-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(user),
+            });
+
+            if (!r.ok) {
+                setDebugStatus(`Telegram auth failed: ${r.status}`);
+                return;
+            }
+
+            const verifiedUser = await r.json();
+            currentTelegramUser = verifiedUser;
+            saveTelegramUserToSession(verifiedUser);
+            renderProfileCard(verifiedUser);
+            setDebugStatus('Telegram connected on web.');
+        } catch (err) {
+            console.error('Telegram auth error:', err);
+            setDebugStatus(`Telegram auth error: ${err.message}`);
+        }
+    };
 
     function updateWalletUi(wallet) {
         currentWallet = wallet;
@@ -726,41 +824,46 @@
     }
 
     async function initTelegramState() {
-        const wa = window.Telegram && window.Telegram.WebApp;
+        const storedUser = loadTelegramUserFromSession();
 
-        if (wa) {
-            try {
-                wa.ready();
-                wa.expand();
-                wa.setHeaderColor('#0b0f16');
-                wa.setBackgroundColor('#05070b');
-            } catch (e) {
-                console.error('Telegram WebApp setup error', e);
-            }
-        }
-
-        const miniUser = wa?.initDataUnsafe?.user || null;
-
-        if (miniUser) {
-            currentTelegramUser = {
-                id: miniUser.id,
-                first_name: miniUser.first_name,
-                last_name: miniUser.last_name,
-                username: miniUser.username,
-                photo_url: miniUser.photo_url
-            };
+        if (storedUser) {
+            currentTelegramUser = storedUser;
             renderProfileCard(currentTelegramUser);
-            setDebugStatus('Telegram Mini App user detected.');
+            setDebugStatus('Telegram user restored from main page session.');
             return;
         }
 
-        renderProfileCard(null);
+        const tg = window.Telegram?.WebApp;
 
-        if (isLocalhost()) {
-            setDebugStatus('No Telegram Mini App user on localhost. Open in Telegram for the normal path.');
-        } else {
-            setDebugStatus('No Telegram Mini App user found. Web auth can be added on the public domain.');
+        if (tg) {
+            try {
+                tg.ready();
+                tg.expand();
+            } catch (e) {
+                console.error('Telegram WebApp setup error', e);
+            }
+
+            const initDataRaw = tg.initData || '';
+            const miniUser = tg.initDataUnsafe?.user || null;
+
+            if (initDataRaw && miniUser) {
+                currentTelegramUser = {
+                    id: miniUser.id,
+                    first_name: miniUser.first_name || '',
+                    last_name: miniUser.last_name || '',
+                    username: miniUser.username || '',
+                    photo_url: miniUser.photo_url || ''
+                };
+
+                saveTelegramUserToSession(currentTelegramUser);
+                renderProfileCard(currentTelegramUser);
+                setDebugStatus('Telegram Mini App user detected.');
+                return;
+            }
         }
+
+        renderProfileCard(null);
+        setDebugStatus('Web fallback mode.');
     }
 
     async function initTonConnect() {
@@ -804,8 +907,6 @@
         }
 
         if (payload?.event === 'auth_user' && payload.auth_data) {
-            setDebugStatus('Telegram auth received. Verifying...');
-
             const r = await fetch('/tg-auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -818,6 +919,7 @@
             }
 
             const user = await r.json();
+            currentTelegramUser = user;
             currentTelegramUser = user;
             renderProfileCard(user);
             setDebugStatus('Telegram connected on web.');

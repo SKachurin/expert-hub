@@ -1,6 +1,11 @@
+mod db;
+mod entities;
+
 use actix_files::Files;
-use actix_web::{post, web, App, HttpResponse, HttpServer};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer};
+use db::connect_db;
 use hmac::{Hmac, Mac};
+use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -8,36 +13,46 @@ type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Clone)]
 struct AppCfg {
-    bot_token: String, // TELEGRAM_BOT_TOKEN from env
+    bot_token: String,
 }
 
-/* ---------- Telegram auth payload ---------- */
+#[derive(Clone)]
+struct AppState {
+    cfg: AppCfg,
+    db: DatabaseConnection,
+}
 
 #[derive(Deserialize)]
 struct TgAuthPayload {
     id: i64,
     first_name: String,
-    #[serde(default)] last_name: Option<String>,
-    #[serde(default)] username: Option<String>,
-    #[serde(default)] photo_url: Option<String>,
+    #[serde(default)]
+    last_name: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    photo_url: Option<String>,
     auth_date: i64,
     hash: String,
 }
 
-/* ---------- /tg-auth: verify login widget data ---------- */
-
 #[post("/tg-auth")]
-async fn tg_auth(cfg: web::Data<AppCfg>, body: web::Json<TgAuthPayload>) -> HttpResponse {
+async fn tg_auth(state: web::Data<AppState>, body: web::Json<TgAuthPayload>) -> HttpResponse {
     let data = body.into_inner();
 
-    // 1) build data_check_string = sorted key=value lines (exclude hash, skip None)
     let mut pairs: Vec<(&str, String)> = Vec::new();
     pairs.push(("auth_date", data.auth_date.to_string()));
     pairs.push(("first_name", data.first_name.clone()));
     pairs.push(("id", data.id.to_string()));
-    if let Some(ref v) = data.last_name { pairs.push(("last_name", v.clone())); }
-    if let Some(ref v) = data.username { pairs.push(("username", v.clone())); }
-    if let Some(ref v) = data.photo_url { pairs.push(("photo_url", v.clone())); }
+    if let Some(ref v) = data.last_name {
+        pairs.push(("last_name", v.clone()));
+    }
+    if let Some(ref v) = data.username {
+        pairs.push(("username", v.clone()));
+    }
+    if let Some(ref v) = data.photo_url {
+        pairs.push(("photo_url", v.clone()));
+    }
 
     pairs.sort_by(|a, b| a.0.cmp(b.0));
 
@@ -47,8 +62,7 @@ async fn tg_auth(cfg: web::Data<AppCfg>, body: web::Json<TgAuthPayload>) -> Http
         .collect::<Vec<_>>()
         .join("\n");
 
-    // 2) secret_key = SHA256(bot_token)  (Telegram Login Widget docs)
-    let token_trimmed = cfg.bot_token.trim(); // strip accidental spaces/newlines
+    let token_trimmed = state.cfg.bot_token.trim();
     let secret_key = Sha256::digest(token_trimmed.as_bytes());
 
     let mut mac = HmacSha256::new_from_slice(&secret_key).unwrap();
@@ -56,27 +70,14 @@ async fn tg_auth(cfg: web::Data<AppCfg>, body: web::Json<TgAuthPayload>) -> Http
     let calc_hash = hex::encode(mac.finalize().into_bytes());
 
     if calc_hash != data.hash.to_lowercase() {
-        eprintln!(
-            "[tg-auth] HASH MISMATCH\n  check_string = {}\n  token = '{}'\n  from_tg = {}\n  calc    = {}",
-            data_check_string,
-            token_trimmed,
-            data.hash,
-            calc_hash
-        );
         return HttpResponse::Unauthorized().body("hash mismatch");
     }
 
-    // 3) freshness (24h window)
     let now = chrono::Utc::now().timestamp();
     if (now - data.auth_date).abs() > 86_400 {
-        eprintln!(
-            "[tg-auth] AUTH EXPIRED now={} auth_date={}",
-            now, data.auth_date
-        );
         return HttpResponse::Unauthorized().body("auth expired");
     }
 
-    // 4) success – return profile for frontend
     HttpResponse::Ok().json(serde_json::json!({
         "id": data.id,
         "first_name": data.first_name,
@@ -85,8 +86,6 @@ async fn tg_auth(cfg: web::Data<AppCfg>, body: web::Json<TgAuthPayload>) -> Http
         "photo_url": data.photo_url
     }))
 }
-
-/* ---------- /link-wallet: TON address mapping ---------- */
 
 #[derive(Deserialize)]
 struct LinkWalletPayload {
@@ -103,15 +102,23 @@ async fn link_wallet(body: web::Json<LinkWalletPayload>) -> HttpResponse {
         body.telegram_id, body.address, body.chain
     );
 
-    // TODO: persist mapping in DB
     HttpResponse::Ok().finish()
 }
 
-/* ---------- boot ---------- */
+#[get("/health")]
+async fn health() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "ok",
+        "service": "expert-hub",
+        "version": env!("CARGO_PKG_VERSION"),
+        "timestamp_utc": chrono::Utc::now().to_rfc3339(),
+    }))
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::init();
 
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let port: u16 = std::env::var("PORT")
@@ -119,17 +126,27 @@ async fn main() -> std::io::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(8080);
 
-    let cfg = AppCfg {
-        bot_token: std::env::var("TELEGRAM_BOT_TOKEN")
-            .expect("TELEGRAM_BOT_TOKEN must be set"),
+    let database_url =
+        std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    let db = connect_db(&database_url)
+        .await
+        .expect("failed to connect to database");
+
+    let state = AppState {
+        cfg: AppCfg {
+            bot_token: std::env::var("TELEGRAM_BOT_TOKEN")
+                .expect("TELEGRAM_BOT_TOKEN must be set"),
+        },
+        db,
     };
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(cfg.clone()))
+            .app_data(web::Data::new(state.clone()))
+            .service(health)
             .service(tg_auth)
             .service(link_wallet)
-            // Serve everything from ./public (index.html, tonconnect-manifest.json, icon-192.png, terms.txt, privacy.txt, etc.)
             .service(Files::new("/", "public").index_file("index.html"))
     })
     .bind((host.as_str(), port))?
