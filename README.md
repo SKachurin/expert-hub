@@ -1,29 +1,34 @@
-!# Expert Hub
+# Expert Hub
 
 ## Current stage
 
-Expert Hub is currently a Rust-based Telegram-first MVP shell for an expert marketplace.
+Expert Hub is currently a Rust-based, Telegram-first MVP backend and frontend foundation for an expert marketplace.
 
 At this stage, the project already has:
 
 - Rust backend with `actix-web`
 - PostgreSQL in Docker
-- SeaORM added as the ORM / entity / migration direction
+- SeaORM entities and migrations wired into the project
 - Telegram web auth fallback for normal browser context
 - Telegram Mini App context support
 - TON wallet connection on the frontend
 - marketplace main page
 - expert onboarding page
-- basic backend endpoints for Telegram auth verification and wallet linking
+- working onboarding submit flow from both web and Telegram application context
+- composite onboarding request handled by backend and split into expert + calendar persistence
+- working MVP database schema created through migrations
 
-The current codebase is not yet a full booking platform. Right now it is mainly:
+The current codebase is not yet a full booking platform, but it is no longer only a schema draft.
 
-1. project skeleton
+Right now it is mainly:
+
+1. Rust backend foundation
 2. Docker runtime
 3. frontend host for web and Telegram app context
 4. Telegram identity handling
 5. TON wallet connection handling
-6. database structure draft for MVP entities
+6. expert onboarding flow with DB persistence
+7. real database schema and entity layer for MVP tables
 
 ---
 
@@ -39,12 +44,22 @@ Main project files currently in use:
 - `Dockerfile.prod`
 - `Makefile`
 - `src/main.rs`
+- `src/config.rs`
+- `src/db.rs`
+- `src/state.rs`
+- `src/http/routes.rs`
+- `src/http/handlers/auth.rs`
+- `src/http/handlers/health.rs`
+- `src/http/handlers/expert_setup.rs`
+- `src/entities/`
+- `src/services/experts.rs`
+- `src/services/calendar_connections.rs`
+- `src/services/expert_setup.rs`
+- `migrations/`
 - `public/index.html`
 - `public/expert-new.html`
 - `scripts/init-dev.sql`
 - `scripts/init-prod.sql`
-
-Earlier project structure and Docker setup were documented in the exported project snapshot. :contentReference[oaicite:0]{index=0}
 
 ---
 
@@ -55,19 +70,20 @@ Earlier project structure and Docker setup were documented in the exported proje
 - Actix Web
 - Serde
 - Tokio
+- SeaORM
 - HMAC + SHA256 for Telegram auth verification
 
 ### Database
 - PostgreSQL
-- SeaORM added in dependencies as the ORM direction for entities and migrations
-
-Current Rust dependencies already include `actix-web`, `actix-files`, `sea-orm`, `tokio`, `serde`, `chrono`, `uuid`, `dotenvy`, `tracing`, `hmac`, `sha2`, and `hex`. :contentReference[oaicite:1]{index=1}
+- SeaORM entities
+- SeaORM migrations
 
 ### Frontend
 - Static HTML pages served by Rust
 - Telegram WebApp SDK
 - Telegram Login Widget / OAuth iframe fallback
 - TON Connect UI
+- local browser draft storage for onboarding form state
 
 ---
 
@@ -81,18 +97,6 @@ In development, the app runs through Docker Compose with these services:
 - `pgadmin` — optional PostgreSQL UI
 - `ngrok` — public HTTPS tunnel for Telegram / web testing
 
-Development compose currently maps:
-
-- app: `8080:8080`
-- db: `5432:5432`
-- pgAdmin: `5050:80`
-
-and uses:
-
-- `DATABASE_URL=postgres://app_user:dev_password@db:5432/app_db`
-
-This is defined in `docker-compose.dev.yml`. :contentReference[oaicite:2]{index=2}
-
 ### Production runtime
 Production uses:
 
@@ -101,200 +105,69 @@ Production uses:
 - container healthchecks
 - resource limits for app and DB
 
-This is defined in `docker-compose.prod.yml` and `Dockerfile.prod`. :contentReference[oaicite:3]{index=3}
-
----
-
-## Docker behavior right now
-
-### `Dockerfile.dev`
-Development image uses:
-
-- `rustlang/rust:nightly-slim`
-- `watchexec`
-- mounted source code
-- automatic restart on Rust / migration / Cargo changes
-
-The dev container runs:
-
-- `cargo run`
-
-through `watchexec`, watching:
-
-- `src`
-- `migrations`
-- `Cargo.toml`
-
-This is the current hot-reload style dev workflow. :contentReference[oaicite:4]{index=4}
-
-### `Dockerfile.prod`
-Production build uses:
-
-1. builder stage with Rust
-2. final runtime stage with Debian slim
-3. compiled binary `expert-hub`
-4. `/health` healthcheck endpoint expected on port `8080`
-
-This is already wired in the prod image. :contentReference[oaicite:5]{index=5}
-
----
-
-## Current backend behavior
-
-Current backend entry point is `src/main.rs`.
-
-Right now the backend does these things:
-
-### 1. Serves static frontend files
-The Rust server serves files from `./public` and uses `index.html` as the root file. :contentReference[oaicite:6]{index=6}
-
-### 2. Verifies Telegram web login
-Endpoint:
-
-- `POST /tg-auth`
-
-What it does now:
-
-- accepts Telegram auth payload
-- rebuilds Telegram `data_check_string`
-- computes HMAC-SHA256 using bot token derived secret
-- checks received hash
-- checks auth freshness
-- returns verified Telegram profile JSON on success
-
-This is already implemented in `src/main.rs`. :contentReference[oaicite:7]{index=7}
-
-### 3. Accepts wallet link requests
-Endpoint:
-
-- `POST /link-wallet`
-
-What it does now:
-
-- accepts TON wallet address
-- accepts chain
-- accepts optional `telegram_id`
-- currently logs the mapping request
-- database persistence is still TODO
-
-This is also already implemented in `src/main.rs`. :contentReference[oaicite:8]{index=8}
-
----
-
-## Current frontend pages
-
-### `public/index.html`
-This is the current marketplace shell main page.
-
-Its role right now:
-
-- show a simple marketplace-style landing page
-- show search mock
-- show category chips
-- link user into expert onboarding
-- in Mini App context, this page is the place where Telegram app-context user detection works and can be used before moving to later pages
-
-### `public/expert-new.html`
-This is the current expert onboarding page.
-
-Its role right now:
-
-- show Telegram identity block
-- show TON wallet block
-- show next onboarding steps
-- support both Telegram Mini App context and normal web context
-- show connected Telegram user when app context is passed correctly
-- show Telegram web login fallback when running outside Mini App context
-
----
-
-## Current identity flow
-
-There are currently **two identity contexts** in the project.
-
-### 1. Telegram Mini App context
-When the app is opened inside Telegram Mini App context, the project uses Telegram WebApp user data as the primary identity source.
-
-Important practical detail:
-
-- the user is detected on the main page in Mini App context
-- that detected identity can then be passed forward to the expert onboarding page
-
-This is the direction that solved the app-context detection problem during the current stage of work.
-
-### 2. Web browser context
-When the page is opened outside Telegram app context, the project falls back to Telegram web login.
-
-That web auth flow currently works through Telegram OAuth widget / iframe and then calls:
-
-- `POST /tg-auth`
-
-for backend verification.
-
----
-
-## Current TON wallet flow
-
-TON wallet is already connected on the frontend through TON Connect UI.
-
-Current behavior:
-
-- user can connect wallet in frontend
-- frontend reads wallet address and chain
-- frontend sends them to backend through `/link-wallet`
-- backend currently only accepts and logs the mapping
-- real DB persistence is not implemented yet
-
-The external TON manifest used by the project is documented separately. :contentReference[oaicite:9]{index=9}
-
 ---
 
 ## Current database state
 
-The real full database implementation is **not finished yet**.
+The project now has a real MVP database layer in code.
 
 What exists right now:
 
 - PostgreSQL runtime
 - DB initialization scripts
-- SeaORM added to Rust dependencies
-- MVP schema draft documented separately
+- SeaORM entity files
+- SeaORM migrations crate
+- real migration files for MVP schema
+- successful migration path for the current schema
 
 Current init scripts enable:
 
 - `uuid-ossp`
 - `pg_stat_statements`
 
-This is already present in both init SQL files. :contentReference[oaicite:10]{index=10}
+### Current implemented MVP tables
 
-### Current documented MVP schema
-The current schema draft defines these main tables:
+The project now includes real entities and migrations for:
 
+- `calendar_connections`
 - `experts`
 - `tags`
 - `categories`
 - `reviews`
-- `calendar`
 - `bookings`
-
-It also already defines expert fields such as:
-
-- Telegram identity
-- wallet address
-- rating
-- review count
-- timezone
-- working days
-- work start / end time
-- allowed session durations
-- notice and buffer settings
-
-and explains that many-to-many relations should be implemented with join tables like:
-
 - `expert_tags`
 - `expert_categories`
+- `payments`
+- `telegram_call_events`
 
-This is documented in the current database draft. :contentReference[oaicite:11]{index=11}
+### Current booking statuses
+
+The booking flow is aligned to the MVP plan and uses these statuses:
+
+- `requested`
+- `awaiting_payment`
+- `funded`
+- `waiting_for_session`
+- `in_grace_period`
+- `completed`
+- `expert_no_show`
+- `customer_no_show`
+- `refunded`
+- `review_open`
+- `closed`
+
+### Current payments and session outcome support
+
+The schema now also includes:
+
+- `payments` for booking-linked payment records
+- `telegram_call_events` for raw research-service session outcome data
+
+This is the base needed for:
+
+- booking persistence
+- TON payment tracking
+- system-driven no-show/completion decisions
 
 ---
 
@@ -305,11 +178,77 @@ Right now these parts are already connected together:
 - Rust server serves static frontend
 - frontend can run in browser and Telegram context
 - Telegram web auth can be verified by backend
+- Telegram Mini App identity can be detected in app context
 - TON wallet can be connected in frontend
-- frontend can send wallet data to backend
 - PostgreSQL runs in Docker
-- ORM direction is chosen: SeaORM
-- entity structure is already drafted at documentation level
+- SeaORM is integrated
+- MVP entities exist in code
+- MVP migrations exist in code
+- current DB schema can be created successfully
+
+In addition, the onboarding flow now works end-to-end:
+
+- user can open expert onboarding page in web or Telegram context
+- Telegram identity is shown on screen
+- TON wallet can be connected on screen
+- expert profile fields can be filled on screen
+- form draft is restored from browser storage on reload
+- final onboarding submit creates:
+    - one row in `experts`
+    - one row in `calendar_connections`
+- this flow has been tested successfully from both:
+    - normal web context
+    - Telegram application / Mini App context
+
+---
+
+## Current onboarding flow
+
+The current onboarding page is no longer just a visual draft.
+
+It now includes these sections in one screen:
+
+1. Telegram identity
+2. TON wallet
+3. Expert profile
+4. Calendar
+5. Progress / readiness tracking
+6. Final submit button
+
+### Current expert profile fields on screen
+
+The onboarding page currently collects:
+
+- display name
+- description
+- timezone
+- hourly rate
+- currency
+- working days
+- work start time
+- work end time
+- allowed session durations
+
+### Current calendar section
+
+The onboarding screen also includes a calendar section with:
+
+- provider selector
+- connect action
+- calendar readiness state
+
+At the current stage, this is still a placeholder onboarding connection step, not a real OAuth / API integration yet.
+
+### Current submit behavior
+
+The final button submits one onboarding request from the frontend.
+
+On the backend, that request is handled as one screen-level payload and then split internally into:
+
+- expert persistence
+- calendar connection persistence
+
+This means the current onboarding flow already writes normalized data into multiple tables while keeping one final registration action in the UI.
 
 ---
 
@@ -317,16 +256,54 @@ Right now these parts are already connected together:
 
 At the current stage, these parts are still not implemented fully:
 
-- real SeaORM entities in code
-- migrations crate and migration files
-- DB persistence for Telegram users
-- DB persistence for wallet links
-- DB persistence for experts / tags / categories / reviews / bookings
-- calendar provider integration
-- public expert page
+- real Google Calendar integration
+- real Calendly integration
+- proper calendar link / OAuth / API connection flow
+- expert personal edit page after registration
+- support for editing remaining expert scheduling fields not yet exposed in onboarding
+- public expert page backed fully by DB data
+- real persistence flow for booking creation
+- real persistence flow for payment creation and updates
 - booking confirmation flow
-- TON payment / contract logic
-- review flow
+- TON payment / contract business logic
+- Telegram research-service integration into booking outcome flow
+- review flow on top of booking outcomes
+
+---
+
+## Immediate next steps
+
+### 1. Open the expert personal edit page after registration
+After the user presses **Register me as an expert**, the next logical step is to redirect them into their personal expert page with all editable fields available.
+
+Reason:
+
+- the onboarding screen already covers the minimum required setup
+- the expert row is now being created successfully
+- some expert fields are still backend-defaulted and not yet editable from onboarding
+- after registration, the user should land in a proper edit page to finish and improve their profile
+
+This personal expert page should become the place where the user can later update:
+
+- description
+- rates
+- work schedule
+- durations
+- tags
+- categories
+- calendar connection details
+- future expert profile settings
+
+### 2. Implement the real Google Calendar connection
+The current calendar section is only a temporary MVP placeholder.
+
+The next real integration step should be:
+
+- implement actual Google Calendar connection
+- store real calendar connection data instead of only placeholder provider/link state
+- replace the current fake connect step with a real integration flow
+
+This is the next backend + frontend integration priority after the expert registration flow.
 
 ---
 
@@ -334,23 +311,40 @@ At the current stage, these parts are still not implemented fully:
 
 Current supporting documents in project documentation:
 
-- `Database Structure - ExpertHub.txt` — current MVP schema draft for entities and relations. :contentReference[oaicite:12]{index=12}
-- `Plan to MVP ExpertHub.txt` — business flow and MVP implementation direction. :contentReference[oaicite:13]{index=13}
-- `ExpertHub-manifests.txt` — TON manifest reference. :contentReference[oaicite:14]{index=14}
-- `expert-hub 17.03.2026.txt` — earlier exported snapshot of project structure, Docker files, backend entry point, and auth flow. :contentReference[oaicite:15]{index=15}
+- `Database Structure - ExpertHub.txt`
+- `Plan to MVP ExpertHub.txt`
+- `ExpertHub-manifests.txt`
+- `expert-hub 17.03.2026.txt`
+- `expert-hub 20.03.2026.txt`
 
 ---
 
 ## Practical summary
 
-Current Expert Hub is a working Rust + Docker + PostgreSQL project shell with:
+Current Expert Hub is a working Rust + Docker + PostgreSQL MVP foundation with:
 
 - Telegram app/web identity handling
 - TON wallet UI connection
 - marketplace main page
 - expert onboarding page
 - backend auth verification endpoint
-- backend wallet-link endpoint
-- documented MVP database design
+- composite onboarding submit flow
+- real SeaORM entities
+- real SeaORM migrations
+- working database schema for the current MVP foundation
+- successful expert registration persistence into normalized DB tables
+- successful testing from both browser and Telegram application context
 
-It is not yet the full marketplace, but the base runtime, auth flow, wallet flow, and DB direction are already established.
+It is still not the full marketplace, but the project now already has:
+
+- a real onboarding screen
+- real onboarding persistence
+- real database writes for expert registration
+- real multi-context flow validation
+
+The most logical next steps are:
+
+1. open the user's personal expert edit page immediately after registration
+2. implement the real Google Calendar connection
+3. continue with booking creation on top of the now-working expert onboarding base
+4. integrate Tera with Actix to handle your HTML templates
