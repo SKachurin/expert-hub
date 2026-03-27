@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.80-slim as builder
+FROM rust:latest as builder
 
 WORKDIR /app
 
@@ -19,6 +19,7 @@ RUN cargo build --release || true
 # Copy full source code
 COPY src ./src
 COPY migrations ./migrations
+COPY public ./public
 
 # Build the optimized binary
 RUN cargo build --release
