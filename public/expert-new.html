@@ -751,12 +751,24 @@
 <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
 
 <script>
-    const BOT = 'expert_hub_bot';
-    const PUBLIC_ORIGIN = 'https://uncategorical-interradially-dawson.ngrok-free.dev';
-    const MANIFEST_URL = 'https://skachurin.github.io/expert-hub-manifests/tonconnect-manifest.json';
-    const TG_APP_LINK = 'https://t.me/expert_hub_bot?startapp=expert_new';
-    const EXPERT_DRAFT_KEY = 'expertHubExpertDraftV1';
-    const CALENDAR_DRAFT_KEY = 'expertHubCalendarDraftV1';
+    const APP_HOST = window.location.hostname;
+    const PUBLIC_ORIGIN = window.location.origin;
+    const IS_DEV = APP_HOST === 'dev.experthub.bar';
+
+    const BOT = IS_DEV
+        ? 'YOUR_DEV_BOT_USERNAME'
+        : 'expert_hub_bot';
+
+    const MANIFEST_URL = `${PUBLIC_ORIGIN}/tonconnect-manifest.json`;
+    const TG_APP_LINK = `https://t.me/${BOT}?startapp=expert_new`;
+
+    const EXPERT_DRAFT_KEY = IS_DEV
+        ? 'Dev_expertHubExpertDraftV1'
+        : 'expertHubExpertDraftV1';
+
+    const CALENDAR_DRAFT_KEY = IS_DEV
+        ? 'Dev_expertHubCalendarDraftV1'
+        : 'expertHubCalendarDraftV1';
 
     const profileCardEl = document.getElementById('profile-card');
     const walletBadgeEl = document.getElementById('wallet-badge');

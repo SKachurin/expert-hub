@@ -2,3 +2,4 @@
 .idea
 /target
 /migrations/target
+/public/tonconnect-manifest.json

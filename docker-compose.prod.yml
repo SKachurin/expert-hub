@@ -13,6 +13,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - RUST_LOG=${RUST_LOG}
       - RUST_BACKTRACE=${RUST_BACKTRACE}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - PORT=8080
     mem_limit: 512m
     cpus: 1.0

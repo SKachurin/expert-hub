@@ -356,6 +356,16 @@
 </div>
 
 <script>
+    const APP_HOST = window.location.hostname;
+    const APP_ORIGIN = window.location.origin;
+    const IS_DEV = APP_HOST === 'dev.experthub.bar';
+
+    const TG_BOT_USERNAME = IS_DEV
+        ? 'YOUR_DEV_BOT_USERNAME'
+        : 'expert_hub_bot';
+
+    const TON_MANIFEST_URL = `${APP_ORIGIN}/tonconnect-manifest.json`;
+
     const registerExpertBtn = document.getElementById('register-expert-btn');
 
     function saveTelegramMiniAppUser() {

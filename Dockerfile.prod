@@ -35,19 +35,16 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
 RUN useradd -m -u 1000 appuser
 
-# Copy binary from builder
 COPY --from=builder /app/target/release/expert-hub /app/
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/public ./public
 
-# Switch to user
 USER appuser
 
 EXPOSE 8080
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
