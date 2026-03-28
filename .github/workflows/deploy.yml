@@ -64,8 +64,7 @@ jobs:
 
       - name: Run deploy script on server
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST"
-            "export APP_DIR='$APP_DIR' BRANCH='${GITHUB_REF_NAME}' HEALTH_URL='http://127.0.0.1:8080/health' && bash /opt/deploy.sh"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "APP_DIR='$APP_DIR' BRANCH='${GITHUB_REF_NAME}' HEALTH_URL='http://127.0.0.1:8080/health' bash /opt/deploy.sh"
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
