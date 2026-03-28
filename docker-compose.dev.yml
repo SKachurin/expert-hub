@@ -1,14 +1,14 @@
-#docker-compose -f docker-compose.dev.yml --env-file .env.local build --no-cache
-#docker compose -f docker-compose.dev.yml --env-file .env.local down --remove-orphans --volumes
 services:
   app:
+    ports:
+      - "127.0.0.1:8080:8080"
     build:
       context: .
       dockerfile: Dockerfile.dev
     environment:
-      - DATABASE_URL=postgres://app_user:dev_password@db:5432/app_db
-      - RUST_LOG=debug
-      - RUST_BACKTRACE=1
+      - DATABASE_URL=${DATABASE_URL}
+      - RUST_LOG=${RUST_LOG}
+      - RUST_BACKTRACE=${RUST_BACKTRACE}
     env_file:
       - .env.local
     volumes:
@@ -30,24 +30,35 @@ services:
           target: /app/migrations
         - action: rebuild
           path: Cargo.toml
-  ngrok:
-    #url https://uncategorical-interradially-dawson.ngrok-free.dev/
-    image: ngrok/ngrok:latest
+
+  dev_tunnel:
+    image: alpine:3.20
     depends_on:
       - app
-    environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
-    command: >
-      http --url=uncategorical-interradially-dawson.ngrok-free.dev http://app:8080
+    volumes:
+      - /home/serg/.ssh/expert_hub_vps:/root/.ssh/expert_hub_vps:ro
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        apk add --no-cache openssh-client
+        mkdir -p /root/.ssh
+        exec ssh \
+          -o StrictHostKeyChecking=no \
+          -o ServerAliveInterval=30 \
+          -o ServerAliveCountMax=3 \
+          -i /root/.ssh/expert_hub_vps \
+          -NT \
+          -R 18080:app:8080 \
+          root@108.181.246.49
     restart: unless-stopped
-
 
   db:
     image: postgres:16
     environment:
-      - POSTGRES_DB=app_db
-      - POSTGRES_USER=app_user
-      - POSTGRES_PASSWORD=dev_password
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -60,7 +71,6 @@ services:
       retries: 10
       start_period: 10s
 
-  # Optional: Add if you want database UI
   pgadmin:
     image: dpage/pgadmin4
     environment:
