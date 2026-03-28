@@ -27,45 +27,27 @@ jobs:
       - name: Add server to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-
-      - name: Upload production .env file
-        run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cat > '$APP_DIR/.env' <<EOF
-          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-          POSTGRES_DB=${POSTGRES_DB}
-          POSTGRES_USER=${POSTGRES_USER}
-          DATABASE_URL=${DATABASE_URL}
-          RUST_LOG=${RUST_LOG}
-          RUST_BACKTRACE=${RUST_BACKTRACE}
-          HOST=${HOST}
-          PORT=${PORT}
-          TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
-          TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-          EOF"
-        env:
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          APP_DIR: ${{ secrets.APP_DIR }}
-
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
-          RUST_LOG: ${{ vars.RUST_LOG }}
-          RUST_BACKTRACE: ${{ vars.RUST_BACKTRACE }}
-          HOST: ${{ vars.HOST }}
-          PORT: ${{ vars.PORT }}
-          TELEGRAM_BOT_USERNAME: ${{ vars.TELEGRAM_BOT_USERNAME }}
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Run deploy script on server
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" "APP_DIR='$APP_DIR' BRANCH='${GITHUB_REF_NAME}' HEALTH_URL='http://127.0.0.1:8080/health' bash /opt/deploy.sh"
-        env:
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          APP_DIR: ${{ secrets.APP_DIR }}
+          ssh "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            export APP_DIR="${{ secrets.APP_DIR }}";
+            export HEALTH_URL="http://127.0.0.1:8080/health";
+
+            export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}";
+            export POSTGRES_DB="${{ secrets.POSTGRES_DB }}";
+            export POSTGRES_USER="${{ secrets.POSTGRES_USER }}";
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}";
+
+            export RUST_LOG="${{ secrets.RUST_LOG }}";
+            export RUST_BACKTRACE="${{ secrets.RUST_BACKTRACE }}";
+            export HOST="${{ secrets.HOST }}";
+            export PORT="${{ secrets.PORT }}";
+
+            export TELEGRAM_BOT_USERNAME="${{ secrets.TELEGRAM_BOT_USERNAME }}";
+            export TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}";
+
+            chmod +x /opt/deploy.sh;
+            bash /opt/deploy.sh;
+          '

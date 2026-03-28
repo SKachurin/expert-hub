@@ -6,9 +6,13 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     environment:
+      - HOST=${HOST}
+      - PORT=${PORT}
       - DATABASE_URL=${DATABASE_URL}
       - RUST_LOG=${RUST_LOG}
       - RUST_BACKTRACE=${RUST_BACKTRACE}
+      - TELEGRAM_DEV_BOT_USERNAME=${TELEGRAM_DEV_BOT_USERNAME}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
     env_file:
       - .env.local
     volumes:
