@@ -13,7 +13,8 @@ COPY src ./src
 COPY migrations ./migrations
 COPY public ./public
 
-RUN cargo build --release
+RUN cargo build --release \
+    && cargo build --release --manifest-path migrations/Cargo.toml
 
 # Runtime stage
 FROM debian:bookworm-slim as runtime
@@ -29,6 +30,7 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -m -u 1000 appuser
 
 COPY --from=builder /app/target/release/expert-hub /app/
+COPY --from=builder /app/migrations/target/release/migration /app/
 COPY --from=builder /app/migrations ./migrations
 COPY --from=builder /app/public ./public
 
