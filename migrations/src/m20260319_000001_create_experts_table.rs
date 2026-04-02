@@ -1,0 +1,195 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Experts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Experts::Id)
+                            .big_integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Experts::TelegramId).big_integer().not_null())
+                    .col(ColumnDef::new(Experts::FirstName).string_len(255).not_null())
+                    .col(ColumnDef::new(Experts::LastName).string_len(255))
+                    .col(ColumnDef::new(Experts::Username).string_len(255))
+                    .col(ColumnDef::new(Experts::DisplayName).string_len(255).not_null())
+                    .col(ColumnDef::new(Experts::TelegramBio).text())
+                    .col(ColumnDef::new(Experts::PhotoUrl).text())
+                    .col(ColumnDef::new(Experts::TonWalletAddress).string_len(255).not_null())
+                    .col(ColumnDef::new(Experts::Timezone).string_len(64).not_null())
+                    .col(
+                        ColumnDef::new(Experts::HourlyRate)
+                            .decimal_len(12, 2)
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::Currency)
+                            .string_len(8)
+                            .not_null()
+                            .default("USD"),
+                    )
+                    .col(ColumnDef::new(Experts::WorkingDays).json_binary().not_null())
+                    .col(ColumnDef::new(Experts::WorkStartTime).time().not_null())
+                    .col(ColumnDef::new(Experts::WorkEndTime).time().not_null())
+                    .col(
+                        ColumnDef::new(Experts::AllowedSessionDurations)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::MinimumNoticeMinutes)
+                            .integer()
+                            .not_null()
+                            .default(60),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::BufferBeforeMinutes)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::BufferAfterMinutes)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::MaxDaysAhead)
+                            .integer()
+                            .not_null()
+                            .default(30),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::CalendarConflictMode)
+                            .string_len(32)
+                            .not_null()
+                            .default("all_enabled_busy"),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::BookingTargetStrategy)
+                            .string_len(32)
+                            .not_null()
+                            .default("primary_calendar"),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::IsActive)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::IsBookable)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::ExpertRating)
+                            .decimal_len(4, 2)
+                            .not_null()
+                            .default(5.00),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::ReviewsCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Experts::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experts_telegram_id")
+                    .table(Experts::Table)
+                    .col(Experts::TelegramId)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experts_ton_wallet_address")
+                    .table(Experts::Table)
+                    .col(Experts::TonWalletAddress)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experts_username")
+                    .table(Experts::Table)
+                    .col(Experts::Username)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Experts::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Experts {
+    Table,
+    Id,
+    TelegramId,
+    FirstName,
+    LastName,
+    Username,
+    DisplayName,
+    TelegramBio,
+    PhotoUrl,
+    TonWalletAddress,
+    Timezone,
+    HourlyRate,
+    Currency,
+    WorkingDays,
+    WorkStartTime,
+    WorkEndTime,
+    AllowedSessionDurations,
+    MinimumNoticeMinutes,
+    BufferBeforeMinutes,
+    BufferAfterMinutes,
+    MaxDaysAhead,
+    CalendarConflictMode,
+    BookingTargetStrategy,
+    IsActive,
+    IsBookable,
+    ExpertRating,
+    ReviewsCount,
+    CreatedAt,
+    UpdatedAt,
+}

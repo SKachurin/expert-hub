@@ -3,7 +3,10 @@ pub struct AppConfig {
     pub host: String,
     pub port: u16,
     pub telegram_bot_token: String,
-    pub app_env: String,
+    pub telegram_dev_bot_token: String,
+    pub google_client_id: String,
+    pub google_client_secret: String,
+    pub google_redirect_uri: String,
 }
 
 impl AppConfig {
@@ -18,13 +21,26 @@ impl AppConfig {
         let telegram_bot_token = std::env::var("TELEGRAM_BOT_TOKEN")
             .expect("TELEGRAM_BOT_TOKEN must be set");
 
-        let app_env = std::env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
+        let telegram_dev_bot_token = std::env::var("TELEGRAM_DEV_BOT_TOKEN")
+            .expect("TELEGRAM_DEV_BOT_TOKEN must be set");
+
+        let google_client_id = std::env::var("GOOGLE_CLIENT_ID")
+            .expect("GOOGLE_CLIENT_ID must be set");
+
+        let google_client_secret = std::env::var("GOOGLE_CLIENT_SECRET")
+            .expect("GOOGLE_CLIENT_SECRET must be set");
+
+        let google_redirect_uri = std::env::var("GOOGLE_REDIRECT_URI")
+            .expect("GOOGLE_REDIRECT_URI must be set");
 
         Self {
             host,
             port,
             telegram_bot_token,
-            app_env,
+            telegram_dev_bot_token,
+            google_client_id,
+            google_client_secret,
+            google_redirect_uri,
         }
     }
 }

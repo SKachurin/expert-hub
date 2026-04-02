@@ -664,7 +664,7 @@
         <div class="section-head">
             <div>
                 <h2 class="section-title">Calendar</h2>
-                <p class="section-note">Choose provider and mark this step as connected for now.</p>
+                <p class="section-note">Connect your Google Calendar account and choose up to 2 calendars.</p>
             </div>
             <div id="calendar-badge" class="status-badge disconnected">Not connected</div>
         </div>
@@ -679,7 +679,11 @@
         </div>
 
         <div class="btn-grid">
-            <button id="calendar-connect-btn" class="btn btn-secondary" type="button">Connect calendar</button>
+            <button id="calendar-connect-btn" class="btn btn-secondary" type="button">Connect Google Calendar</button>
+        </div>
+
+        <div class="foot-note" style="text-align:left; padding:10px 2px 0;">
+            Google Calendar is a trademark of Google LLC.
         </div>
     </section>
 
@@ -818,7 +822,11 @@
 
     const calendarDraft = {
         provider: '',
-        connected: false
+        connected: false,
+        google_session_id: '',
+        google_account_email: '',
+        google_calendars: [],
+        selected_google_calendar_ids: []
     };
 
     function escapeHtml(value) {
@@ -938,6 +946,10 @@
             if (parsed && typeof parsed === 'object') {
                 calendarDraft.provider = parsed.provider || '';
                 calendarDraft.connected = !!parsed.connected;
+                calendarDraft.google_session_id = parsed.google_session_id || '';
+                calendarDraft.google_account_email = parsed.google_account_email || '';
+                calendarDraft.google_calendars = Array.isArray(parsed.google_calendars) ? parsed.google_calendars : [];
+                calendarDraft.selected_google_calendar_ids = Array.isArray(parsed.selected_google_calendar_ids) ? parsed.selected_google_calendar_ids : [];
             }
         } catch (e) {
             console.error('Failed to load calendar draft', e);
@@ -1070,20 +1082,41 @@
             calendarNoteEl.textContent = 'Choose Google Calendar or Calendly above.';
             setBadgeState(calendarBadgeEl, false, 'Connected', 'Not connected');
             setStepState(stepCalendarEl, 'Pending', false);
-            calendarConnectBtnEl.textContent = 'Connect calendar';
+            calendarConnectBtnEl.textContent = 'Connect Google Calendar';
             updateRegisterButtonState();
             return;
         }
 
-        const title = calendarDraft.provider === 'google' ? 'Google Calendar' : 'Calendly';
+        if (calendarDraft.provider === 'google') {
+            calendarTitleEl.textContent = 'Google Calendar';
+
+            if (calendarDraft.connected) {
+                const selectedCount = calendarDraft.selected_google_calendar_ids.length;
+                const emailText = calendarDraft.google_account_email
+                    ? `Connected as ${calendarDraft.google_account_email}. `
+                    : '';
+
+                calendarNoteEl.textContent = `${emailText}${selectedCount} calendar(s) selected.`;
+            } else {
+                calendarNoteEl.textContent = 'Connect your Google account and choose up to 2 calendars.';
+            }
+
+            setBadgeState(calendarBadgeEl, !!calendarDraft.connected, 'Connected', 'Not connected');
+            setStepState(stepCalendarEl, calendarDraft.connected ? 'Connected' : 'Pending', !!calendarDraft.connected);
+            calendarConnectBtnEl.textContent = calendarDraft.connected ? 'Reconnect Google Calendar' : 'Connect Google Calendar';
+            updateRegisterButtonState();
+            return;
+        }
+
+        const title = calendarDraft.provider === 'calendly' ? 'Calendly' : 'Unknown provider';
         calendarTitleEl.textContent = title;
         calendarNoteEl.textContent = calendarDraft.connected
-            ? 'Calendar marked as connected for this MVP step.'
+            ? 'Provider connected.'
             : 'Provider selected, but not connected yet.';
 
         setBadgeState(calendarBadgeEl, !!calendarDraft.connected, 'Connected', 'Not connected');
         setStepState(stepCalendarEl, calendarDraft.connected ? 'Connected' : 'Pending', !!calendarDraft.connected);
-        calendarConnectBtnEl.textContent = calendarDraft.connected ? 'Connected' : 'Connect calendar';
+        calendarConnectBtnEl.textContent = calendarDraft.connected ? 'Connected' : 'Connect Calendly';
         updateRegisterButtonState();
     }
 
@@ -1155,7 +1188,8 @@
             work_start_time: expertDraft.work_start_time,
             work_end_time: expertDraft.work_end_time,
             allowed_session_durations: expertDraft.allowed_session_durations,
-            calendar_provider: calendarDraft.provider
+            calendar_provider: calendarDraft.provider,
+            google_session_id: calendarDraft.provider === 'google' ? calendarDraft.google_session_id : null
         };
     }
 
@@ -1289,6 +1323,71 @@
         validateProfileDraft();
     }
 
+    async function loadGoogleSession(sessionId) {
+        const r = await fetch(`/google/calendars/session/${encodeURIComponent(sessionId)}`);
+        if (!r.ok) {
+            throw new Error(`Failed to load Google session: ${r.status}`);
+        }
+
+        const data = await r.json();
+
+        const selected = prompt(
+            `Google account: ${data.account_email || 'unknown'}\n\nSelect up to 2 calendars by numbers, comma-separated:\n\n` +
+            data.calendars.map((c, i) => `${i + 1}. ${c.summary}${c.primary ? ' (primary)' : ''}`).join('\n'),
+            '1'
+        );
+
+        if (selected === null) {
+            throw new Error('Google calendar selection cancelled');
+        }
+
+        const indexes = selected
+            .split(',')
+            .map(v => Number(v.trim()))
+            .filter(v => Number.isInteger(v) && v >= 1 && v <= data.calendars.length);
+
+        const uniqueIndexes = [...new Set(indexes)].slice(0, 2);
+
+        if (!uniqueIndexes.length) {
+            throw new Error('No calendars selected');
+        }
+
+        const selectedCalendarIds = uniqueIndexes.map(i => data.calendars[i - 1].id);
+
+        const saveResp = await fetch(`/google/calendars/session/${encodeURIComponent(sessionId)}/select`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selected_calendar_ids: selectedCalendarIds })
+        });
+
+        if (!saveResp.ok) {
+            const text = await saveResp.text().catch(() => '');
+            throw new Error(`Failed to save Google calendar selection: ${saveResp.status} ${text}`);
+        }
+
+        calendarDraft.provider = 'google';
+        calendarDraft.connected = true;
+        calendarDraft.google_session_id = data.session_id;
+        calendarDraft.google_account_email = data.account_email || '';
+        calendarDraft.google_calendars = data.calendars;
+        calendarDraft.selected_google_calendar_ids = selectedCalendarIds;
+        saveCalendarDraft();
+        syncCalendarDraftToForm();
+        setDebugStatus('Google Calendar connected.');
+    }
+
+    function maybeResumeGoogleSessionFromUrl() {
+        const url = new URL(window.location.href);
+        const sessionId = url.searchParams.get('google_session');
+
+        if (!sessionId) return Promise.resolve();
+
+        url.searchParams.delete('google_session');
+        window.history.replaceState({}, '', url.toString());
+
+        return loadGoogleSession(sessionId);
+    }
+
     function initFormListeners() {
         [displayNameEl, telegramBioEl, timezoneEl, hourlyRateEl, currencyEl, workStartEl, workEndEl].forEach((el) => {
             el.addEventListener('input', updateDraftFromInputs);
@@ -1340,10 +1439,25 @@
                 return;
             }
 
+            if (calendarDraft.provider === 'google') {
+                const tgUser = currentTelegramUser || loadTelegramUserFromSession();
+
+                if (!tgUser?.id) {
+                    setDebugStatus('Connect Telegram first.');
+                    return;
+                }
+
+                currentTelegramUser = tgUser;
+
+                const url = `/oauth/google/start?telegram_id=${encodeURIComponent(tgUser.id)}`;
+                window.location.href = url;
+                return;
+            }
+
             calendarDraft.connected = true;
             saveCalendarDraft();
             syncCalendarDraftToForm();
-            setDebugStatus('Calendar marked as connected.');
+            setDebugStatus('Calendly is still placeholder for now.');
         });
 
         registerExpertBtnEl.addEventListener('click', async () => {
@@ -1352,7 +1466,7 @@
             try {
                 setDebugStatus('Registering expert...');
                 const saved = await registerExpert();
-                setDebugStatus(`Expert saved. id=${saved.id}${saved.created ? ' created' : ' updated'}.`);
+                setDebugStatus(`Expert saved. id=${saved.expert_id}${saved.created ? ' created' : ' updated'}.`);
             } catch (err) {
                 console.error(err);
                 setDebugStatus(`Registration error: ${err.message}`);
@@ -1407,6 +1521,7 @@
         initFormListeners();
         await initTelegramState();
         initFormDefaults();
+        await maybeResumeGoogleSessionFromUrl();
         await initTonConnect();
         updateRegisterButtonState();
     })();

@@ -18,7 +18,6 @@ pub struct UpsertExpertData {
     pub display_name: String,
     pub telegram_bio: Option<String>,
     pub ton_wallet_address: String,
-    pub calendar_id: Option<i64>,
     pub timezone: String,
     pub hourly_rate: Decimal,
     pub currency: String,
@@ -32,10 +31,9 @@ pub struct UpsertExpertData {
 pub struct UpsertExpertResponse {
     pub id: i64,
     pub telegram_id: i64,
-    pub telegram_username: String,
-    pub telegram_name: String,
+    pub username: String,
+    pub display_name: String,
     pub ton_wallet_address: String,
-    pub calendar_id: Option<i64>,
     pub timezone: String,
     pub created: bool,
 }
@@ -50,8 +48,8 @@ where
     validate_data(&data)?;
 
     let now = Utc::now().fixed_offset();
-    let telegram_name = if data.display_name.trim().is_empty() {
-        build_telegram_name(&data.first_name, &data.last_name, &data.username)
+    let display_name = if data.display_name.trim().is_empty() {
+        build_display_name(&data.first_name, &data.last_name, &data.username)
     } else {
         data.display_name.trim().to_string()
     };
@@ -71,11 +69,12 @@ where
         Some(existing) => {
             let mut active: experts::ActiveModel = existing.into();
 
-            active.telegram_username = Set(data.username.clone());
-            active.telegram_name = Set(telegram_name.clone());
+            active.first_name = Set(data.first_name.clone());
+            active.last_name = Set(optional_trimmed_string(&data.last_name));
+            active.username = Set(optional_trimmed_string(&data.username));
+            active.display_name = Set(display_name.clone());
             active.telegram_bio = Set(data.telegram_bio.clone());
             active.ton_wallet_address = Set(data.ton_wallet_address.clone());
-            active.calendar_id = Set(data.calendar_id);
             active.photo_url = Set(data.photo_url.clone());
             active.hourly_rate = Set(data.hourly_rate);
             active.currency = Set(data.currency.clone());
@@ -94,11 +93,12 @@ where
         None => {
             let active = experts::ActiveModel {
                 telegram_id: Set(data.telegram_id),
-                telegram_username: Set(data.username.clone()),
-                telegram_name: Set(telegram_name.clone()),
+                first_name: Set(data.first_name.clone()),
+                last_name: Set(optional_trimmed_string(&data.last_name)),
+                username: Set(optional_trimmed_string(&data.username)),
+                display_name: Set(display_name.clone()),
                 telegram_bio: Set(data.telegram_bio.clone()),
                 ton_wallet_address: Set(data.ton_wallet_address.clone()),
-                calendar_id: Set(data.calendar_id),
                 photo_url: Set(data.photo_url.clone()),
                 hourly_rate: Set(data.hourly_rate),
                 currency: Set(data.currency.clone()),
@@ -128,10 +128,9 @@ where
     Ok(UpsertExpertResponse {
         id: model.id,
         telegram_id: model.telegram_id,
-        telegram_username: model.telegram_username,
-        telegram_name: model.telegram_name,
+        username: model.username.unwrap_or_default(),
+        display_name: model.display_name,
         ton_wallet_address: model.ton_wallet_address,
-        calendar_id: model.calendar_id,
         timezone: model.timezone,
         created,
     })
@@ -165,7 +164,7 @@ fn validate_data(data: &UpsertExpertData) -> Result<(), String> {
     Ok(())
 }
 
-fn build_telegram_name(first_name: &str, last_name: &str, username: &str) -> String {
+fn build_display_name(first_name: &str, last_name: &str, username: &str) -> String {
     let full = [first_name.trim(), last_name.trim()]
         .into_iter()
         .filter(|v| !v.is_empty())
@@ -187,4 +186,13 @@ fn parse_time(value: &str) -> Result<NaiveTime, String> {
     NaiveTime::parse_from_str(value, "%H:%M:%S")
         .or_else(|_| NaiveTime::parse_from_str(value, "%H:%M"))
         .map_err(|_| format!("invalid time format: {value}"))
+}
+
+fn optional_trimmed_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }

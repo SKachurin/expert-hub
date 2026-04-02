@@ -1,4 +1,4 @@
-use actix_web::{post, web, HttpResponse};
+use actix_web::{post, web, HttpRequest, HttpResponse};
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -23,6 +23,7 @@ pub struct TgAuthPayload {
 
 #[post("/tg-auth")]
 pub async fn tg_auth(
+    req: HttpRequest,
     state: web::Data<AppState>,
     body: web::Json<TgAuthPayload>,
 ) -> HttpResponse {
@@ -51,8 +52,15 @@ pub async fn tg_auth(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let token_trimmed = state.config.telegram_bot_token.trim();
-    let secret_key = Sha256::digest(token_trimmed.as_bytes());
+    let host = req.connection_info().host().to_string();
+
+    let bot_token = if host.contains("dev.experthub.bar") {
+        state.config.telegram_dev_bot_token.trim()
+    } else {
+        state.config.telegram_bot_token.trim()
+    };
+
+    let secret_key = Sha256::digest(bot_token.as_bytes());
 
     let mut mac = HmacSha256::new_from_slice(&secret_key).unwrap();
     mac.update(data_check_string.as_bytes());
@@ -60,8 +68,8 @@ pub async fn tg_auth(
 
     if calc_hash != data.hash.to_lowercase() {
         eprintln!(
-            "[tg-auth] HASH MISMATCH\n  check_string = {}\n  from_tg = {}\n  calc    = {}",
-            data_check_string, data.hash, calc_hash
+            "[tg-auth] HASH MISMATCH\n  host    = {}\n  check_string = {}\n  from_tg = {}\n  calc    = {}",
+            host, data_check_string, data.hash, calc_hash
         );
         return HttpResponse::Unauthorized().body("hash mismatch");
     }

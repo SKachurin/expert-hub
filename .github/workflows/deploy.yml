@@ -47,6 +47,10 @@ jobs:
 
             export TELEGRAM_BOT_USERNAME="${{ secrets.TELEGRAM_BOT_USERNAME }}";
             export TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}";
+          
+            export GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}";
+            export GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}";
+            export GOOGLE_REDIRECT_URI="${{ secrets.GOOGLE_REDIRECT_URI }}";
 
             chmod +x /opt/deploy.sh;
             bash /opt/deploy.sh;
