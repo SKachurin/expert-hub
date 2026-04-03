@@ -11,8 +11,7 @@ pub async fn register_expert_setup_handler(
     match register_expert_setup(&state, body.into_inner()).await {
         Ok(saved) => HttpResponse::Ok().json(saved),
         Err(message) => HttpResponse::BadRequest().json(serde_json::json!({
-            "status": "error",
-            "message": message
+            "error": message
         })),
     }
 }
