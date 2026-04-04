@@ -261,6 +261,7 @@
             font-size: 12px;
             line-height: 1.45;
             word-break: break-all;
+            white-space: pre-line;
         }
 
         .wallet-chip {
@@ -570,10 +571,10 @@
         }
 
         .calendar-connect-btn.is-connected {
-            background: linear-gradient(180deg, #1f8f57 0%, #167447 100%);
-            border-color: rgba(36, 186, 108, 0.35);
-            color: #ffffff;
-            box-shadow: 0 14px 28px rgba(22, 116, 71, 0.28);
+            background: rgba(49, 196, 141, 0.12);
+            border: 1px solid rgba(49, 196, 141, 0.24);
+            color: #ddfff0;
+            box-shadow: none;
         }
 
         .calendar-btn-logo {
@@ -643,23 +644,53 @@
             box-shadow: 0 14px 28px rgba(0, 152, 234, 0.28);
         }
 
-        .add-calendar-card{
-            /*display: inline-flex;*/
+        .add-calendar-card {
             display: none;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 14px;
             width: 100%;
             min-height: 78px;
-            padding: 14px 18px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.03) 100%);
-            font-size: 16px;
+            padding: 18px 20px;
+            border: 1px solid rgba(86, 168, 245, 0.28);
+            border-radius: var(--radius-xl);
+            background: rgba(86, 168, 245, 0.14);
+            color: #dff1ff;
+            font-size: 18px;
             font-weight: 800;
             cursor: pointer;
-            background: rgba(86, 168, 245, 0.14);
-            border-color: rgba(86, 168, 245, 0.28);
-            color: #dff1ff;
             transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease, opacity .15s ease;
+        }
+
+        .add-calendar-card:active {
+            transform: translateY(1px);
+        }
+
+        .add-calendar-plus-icon {
+            width: 40px;
+            height: 40px;
+            flex: 0 0 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(86, 168, 245, 0.30);
+            color: #dff1ff;
+            box-shadow: 0 8px 22px rgba(86, 168, 245, 0.16);
+        }
+
+        .add-calendar-plus-svg {
+            width: 20px;
+            height: 20px;
+            display: block;
+        }
+
+        .add-calendar-text {
+            color: #dff1ff;
+            font-size: 18px;
+            font-weight: 800;
+            line-height: 1.2;
         }
     </style>
 
@@ -824,8 +855,16 @@
         </div>
     </section>
 
-    <section id="add-calendar-card"  class="panel add-calendar-card">
-        BIG PLUS SIGN <p>Connect another calendar</p>
+    <section id="add-calendar-card" class="panel add-calendar-card" role="button" tabindex="0">
+    <span class="add-calendar-plus-icon" aria-hidden="true">
+        <svg viewBox="0 0 446 419" xmlns="http://www.w3.org/2000/svg" class="add-calendar-plus-svg">
+            <g fill="currentColor">
+                <path d="M201.54 376.48 c-47.30 -5.15 -89.28 -29.65 -117.67 -68.72 -16.60 -22.89 -26.95 -49.88 -30.54 -79.91 -1.18 -9.80 -1.06 -30.87 0.25 -40.55 3.76 -28.64 13.39 -53.72 29.40 -76.78 12.80 -18.37 32.01 -36.49 49.63 -46.75 1.73 -1.01 3.46 -2.07 3.80 -2.37 2.28 -1.86 16.89 -8.66 26.19 -12.21 8.87 -3.38 24.03 -7.18 32.94 -8.24 11.61 -1.35 30.96 -1.69 40.76 -0.63 37.21 3.93 71.63 20.36 98.41 46.88 28.68 28.38 46.20 66.48 49.58 107.61 0.68 7.77 0.55 23.14 -0.17 30.79 -1.22 12.92 -3.63 24.45 -7.60 36.45 -9.12 27.71 -25.68 53.43 -46.59 72.18 -27.16 24.37 -58.66 38.52 -94.06 42.28 -7.43 0.80 -27.03 0.76 -34.34 -0.04z m23.78 -31.42 c27.96 -1.90 54.27 -12.08 76.02 -29.40 5.91 -4.73 17.19 -15.96 21.75 -21.71 10.35 -13.01 19.17 -29.94 24.07 -46.08 8.24 -27.24 7.64 -55.83 -1.69 -83.58 -8.91 -26.35 -26.27 -50.17 -48.57 -66.60 -22.93 -16.85 -50.98 -26.31 -78.13 -26.31 -29.40 0 -59.26 10.81 -83.37 30.16 -5.03 4.01 -13.52 12.42 -18.03 17.78 -15.04 17.91 -25.13 38.26 -30.11 60.86 -2.53 11.53 -3 16.22 -2.96 29.31 0 12.50 0.55 17.78 3 28.72 3.80 17.36 12.88 37.17 23.61 51.53 24.07 32.39 61.58 52.92 101.11 55.29 2.91 0.21 5.66 0.38 6.12 0.38 0.46 0.04 3.72 -0.13 7.18 -0.34z"/>
+                <path d="M213.29 291.21 c-1.27 -0.38 -3.08 -1.10 -4.01 -1.69 -2.45 -1.44 -5.57 -4.94 -6.88 -7.73 l-1.14 -2.41 -0.13 -26.48 -0.13 -26.48 -25.85 -0.13 -25.85 -0.13 -2.83 -1.39 c-4.52 -2.24 -8.07 -6.67 -9.21 -11.57 -0.59 -2.70 -0.51 -7.43 0.21 -10.22 1.31 -4.94 4.43 -8.57 9.42 -10.94 l2.83 -1.35 25.68 -0.13 25.64 -0.13 0 -25.43 c0 -26.61 0.08 -27.58 1.90 -31.08 1.31 -2.58 4.73 -5.79 7.52 -7.05 2.49 -1.14 2.91 -1.22 8.32 -1.22 5.36 0 5.83 0.08 8.07 1.18 3.08 1.52 6 4.48 7.69 7.90 l1.35 2.75 0.13 26.48 0.13 26.48 25.64 0.13 25.64 0.13 2.45 1.01 c3.46 1.35 7.43 5.15 8.91 8.53 2.41 5.28 2.32 12.04 -0.17 17.11 -1.52 3.13 -4.65 6.12 -8.02 7.73 l-2.32 1.10 -25.97 0.21 -25.97 0.21 -0.21 26.40 c-0.25 29.06 -0.13 27.75 -2.91 31.85 -1.73 2.49 -3.51 3.93 -6.76 5.45 -2.28 1.10 -3.29 1.31 -6.76 1.44 -2.75 0.08 -4.81 -0.08 -6.38 -0.51z"/>
+            </g>
+        </svg>
+    </span>
+        <span class="add-calendar-text">Connect another calendar</span>
     </section>
 
     <section class="panel actions-card">
@@ -905,6 +944,26 @@
         <h3 id="calendar-provider-modal-title">Calendar provider</h3>
         <p id="calendar-provider-modal-text">Choose calendar provider first.</p>
         <button type="button" id="calendar-provider-modal-ok" class="eh-modal-ok-btn">Okay</button>
+    </div>
+</div>
+
+<div id="google-scope-denied-modal" class="eh-modal-overlay" hidden>
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="google-scope-denied-modal-title">
+        <h3 id="google-scope-denied-modal-title">Google Calendar permission</h3>
+        <p id="google-scope-denied-modal-text">
+            Google Calendar permission was not granted. Please reconnect and allow Calendar access.
+        </p>
+        <button type="button" id="google-scope-denied-modal-ok" class="eh-modal-ok-btn">Okay</button>
+    </div>
+</div>
+
+<div id="telegram-required-modal" class="eh-modal-overlay" hidden>
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="telegram-required-modal-title">
+        <h3 id="telegram-required-modal-title">Telegram required</h3>
+        <p id="telegram-required-modal-text">
+            Connect Telegram first.
+        </p>
+        <button type="button" id="telegram-required-modal-ok" class="eh-modal-ok-btn">Okay</button>
     </div>
 </div>
 
@@ -1447,6 +1506,7 @@
         syncExpertDraftToForm();
 
         ensureCalendarDraftBlock(1);
+        updateCalendarBadge();
         saveExpertDraft();
         saveCalendarDraft();
         validateProfileDraft();
@@ -1505,7 +1565,13 @@
         block.google_calendars = Array.isArray(data.calendars) ? data.calendars : [];
         block.selected_calendar_ids = selectedCalendarIds;
 
+        const providerEl = document.getElementById(`calendar-provider-${blockNumber}`);
+        if (providerEl) {
+            providerEl.value = 'google';
+        }
+
         saveCalendarDraft();
+        updateCalendarBadge();
         updateCalendarConnectButtonByNumber(blockNumber);
         updateAddCalendarCardVisibility();
         updateRegisterButtonState();
@@ -1789,8 +1855,12 @@
         }
 
         const block = calendarDraft.blocks[number - 1] || {};
-        const provider = String(providerEl.value || '').toLowerCase();
+        const provider = String(providerEl.value || block.provider || '').toLowerCase();
         const connected = !!block.connected;
+
+        if (providerEl.value !== provider && provider) {
+            providerEl.value = provider;
+        }
 
         btn.classList.remove('is-google-pending', 'is-connected', 'show-google-logo');
 
@@ -1804,16 +1874,21 @@
 
         if (connected) {
             if (provider === 'google') {
-                title.textContent = 'Google Calendar';
+                const selectedNames = getSelectedCalendarNames(block);
+
+                title.textContent = 'Connected calendars';
+
                 note.textContent =
-                    `${block.google_account_email ? `Connected as ${block.google_account_email}. ` : ''}` +
-                    `${(block.selected_calendar_ids || []).length} calendar(s) selected.`;
-                btn.classList.add('is-connected', 'show-google-logo');
-                btnText.textContent = 'Reconnect Google Calendar';
+                    `${block.google_account_email ? `Connected as ${block.google_account_email}.\n` : ''}` +
+                    (selectedNames.length
+                        ? `Calendars: ${selectedNames.join(', ')}`
+                        : 'Connected.');
+
+                btn.classList.add('is-connected');
+                btnText.textContent = 'Edit Connected Google Calendar';
                 return;
             }
 
-            btn.classList.add('is-connected');
             btnText.textContent = 'Calendar connected';
             return;
         }
@@ -1858,6 +1933,7 @@
             block.selected_calendar_ids = [];
 
             saveCalendarDraft();
+            updateCalendarBadge();
             updateCalendarConnectButtonByNumber(number);
             updateRegisterButtonState();
         });
@@ -1876,7 +1952,7 @@
                 const tgUser = currentTelegramUser || loadTelegramUserFromSession();
 
                 if (!tgUser?.id) {
-                    setDebugStatus('Connect Telegram first.');
+                    showTelegramRequiredModal('Connect Telegram first.');
                     return;
                 }
 
@@ -1925,17 +2001,267 @@
         }
     }
 
+    // Telegram block
+    function focusTelegramConnection() {
+        const profileCard = document.getElementById('profile-card');
+        if (!profileCard) {
+            return;
+        }
+
+        profileCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        setTimeout(() => {
+            const openLink = profileCard.querySelector('.telegram-open-link');
+            const loginSlot = profileCard.querySelector('#telegram-login-slot iframe');
+
+            if (openLink) {
+                openLink.focus();
+                return;
+            }
+
+            if (loginSlot) {
+                loginSlot.focus();
+            }
+        }, 220);
+    }
+
+    function showTelegramRequiredModal(message) {
+        const overlay = document.getElementById('telegram-required-modal');
+        const text = document.getElementById('telegram-required-modal-text');
+        const okBtn = document.getElementById('telegram-required-modal-ok');
+
+        if (!overlay || !text || !okBtn) {
+            alert(message || 'Connect Telegram first.');
+            focusTelegramConnection();
+            return;
+        }
+
+        text.textContent = message || 'Connect Telegram first.';
+        overlay.hidden = false;
+
+        requestAnimationFrame(() => {
+            okBtn.focus();
+        });
+    }
+
+    function hideTelegramRequiredModal() {
+        const overlay = document.getElementById('telegram-required-modal');
+        if (!overlay) {
+            return;
+        }
+
+        overlay.hidden = true;
+    }
+
+    document.getElementById('telegram-required-modal-ok')?.addEventListener('click', () => {
+        hideTelegramRequiredModal();
+        focusTelegramConnection();
+    });
+
+    document.getElementById('telegram-required-modal')?.addEventListener('click', (event) => {
+        if (event.target.id === 'telegram-required-modal') {
+            hideTelegramRequiredModal();
+            focusTelegramConnection();
+        }
+    });
+
+    function hideGoogleScopeDeniedModal() {
+        const overlay = document.getElementById('google-scope-denied-modal');
+        if (!overlay) return;
+        overlay.hidden = true;
+    }
+
+    // Calendar checks for stored keys
+    async function syncGoogleSessionsWithBackend() {
+        let changed = false;
+
+        for (let index = 0; index < calendarDraft.blocks.length; index++) {
+            const block = calendarDraft.blocks[index];
+
+            if (!block) {
+                continue;
+            }
+
+            if (block.provider !== 'google') {
+                continue;
+            }
+
+            if (!block.google_session_id) {
+                continue;
+            }
+
+            try {
+                const response = await fetch(
+                    `/google/calendars/session/${encodeURIComponent(block.google_session_id)}`
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    block.connected = true;
+                    block.google_account_email = data.account_email || '';
+                    block.google_calendars = Array.isArray(data.calendars) ? data.calendars : [];
+                    block.selected_calendar_ids = Array.isArray(data.selected_calendar_ids)
+                        ? data.selected_calendar_ids
+                        : [];
+
+                    continue;
+                }
+
+                if (response.status === 404) {
+                    block.connected = false;
+                    block.google_session_id = '';
+                    block.google_account_email = '';
+                    block.google_calendars = [];
+                    block.selected_calendar_ids = [];
+                    changed = true;
+                    continue;
+                }
+
+                console.error(`Google session check failed for block ${index + 1}: ${response.status}`);
+            } catch (error) {
+                console.error(`Google session check error for block ${index + 1}:`, error);
+            }
+        }
+
+        if (changed) {
+            saveCalendarDraft();
+        }
+
+        for (let number = 1; number <= calendarDraft.blocks.length; number++) {
+            updateCalendarConnectButtonByNumber(number);
+        }
+
+        updateCalendarBadge();
+        updateAddCalendarCardVisibility();
+        updateRegisterButtonState();
+    }
+
+    //Check for GAuth error
+    function handleGoogleErrorFromUrl() {
+        const url = new URL(window.location.href);
+        const googleError = url.searchParams.get('google_error');
+
+        if (!googleError) {
+            return;
+        }
+
+        if (googleError === 'calendar_scope_denied') {
+            showGoogleScopeDeniedModal(
+                'Google signed you in, but Calendar permission was not granted. Please try again and allow Calendar access.'
+            );
+        } else if (googleError === 'oauth_error') {
+            showGoogleScopeDeniedModal('Google authorization was cancelled or denied.');
+        } else if (googleError === 'token_exchange_failed') {
+            showGoogleScopeDeniedModal('Google sign-in failed during token exchange. Please try again.');
+        } else if (googleError === 'userinfo_failed') {
+            showGoogleScopeDeniedModal('Google sign-in succeeded, but account info could not be loaded.');
+        } else if (googleError === 'calendar_list_failed') {
+            showGoogleScopeDeniedModal('Google sign-in succeeded, but calendar list could not be loaded.');
+        }
+
+        url.searchParams.delete('google_error');
+        url.searchParams.delete('google_scope');
+        url.searchParams.delete('google_error_message');
+        window.history.replaceState({}, '', url.toString());
+    }
+
+    // modal window for GAuth
+    function showGoogleScopeDeniedModal(message) {
+        const overlay = document.getElementById('google-scope-denied-modal');
+        const text = document.getElementById('google-scope-denied-modal-text');
+        const okBtn = document.getElementById('google-scope-denied-modal-ok');
+
+        if (!overlay || !text || !okBtn) {
+            alert(message || 'Google Calendar permission was not granted.');
+            focusFirstCalendarProviderField();
+            return;
+        }
+
+        text.textContent = message || 'Google Calendar permission was not granted.';
+        overlay.hidden = false;
+
+        requestAnimationFrame(() => {
+            okBtn.focus();
+        });
+    }
+
+    function focusFirstCalendarProviderField() {
+        const select =
+            document.getElementById('calendar-provider-1') ||
+            document.querySelector('[id^="calendar-provider-"]');
+
+        if (!select) return;
+
+        select.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        setTimeout(() => {
+            select.focus();
+        }, 220);
+    }
+
+    document.getElementById('google-scope-denied-modal-ok')?.addEventListener('click', () => {
+        hideGoogleScopeDeniedModal();
+        focusFirstCalendarProviderField();
+    });
+
+    document.getElementById('google-scope-denied-modal')?.addEventListener('click', (event) => {
+        if (event.target.id === 'google-scope-denied-modal') {
+            hideGoogleScopeDeniedModal();
+            focusFirstCalendarProviderField();
+        }
+    });
+
+
+    function updateCalendarBadge() {
+        const connectedCount = calendarDraft.blocks.filter(block => block && block.connected).length;
+        setBadgeState(
+            calendarBadgeEl,
+            connectedCount > 0,
+            connectedCount === 1 ? '1 connected' : `${connectedCount} connected`,
+            'Not connected'
+        );
+        setStepState(stepCalendarEl, connectedCount > 0 ? 'Connected' : 'Pending', connectedCount > 0);
+    }
+
+    function getSelectedCalendarNames(block) {
+        if (!block || !Array.isArray(block.google_calendars) || !Array.isArray(block.selected_calendar_ids)) {
+            return [];
+        }
+
+        return block.google_calendars
+            .filter(calendar => block.selected_calendar_ids.includes(calendar.id))
+            .map(calendar => {
+                if (calendar.primary) {
+                    return 'Primary calendar';
+                }
+
+                return calendar.summary || 'Unnamed calendar';
+            });
+    }
+
+
+    //startup all
     (async () => {
         renderProfileCard(null);
         updateWalletUi(null);
         initFormListeners();
         initAddCalendarCard();
+
         await initTelegramState();
         initFormDefaults();
         rebuildCalendarBlocksFromDraft();
         bindCalendarBlockEvents(1);
-        updateCalendarConnectButtonByNumber(1);
+
+        for (let number = 1; number <= calendarDraft.blocks.length; number++) {
+            updateCalendarConnectButtonByNumber(number);
+        }
+
+        await syncGoogleSessionsWithBackend();
+
+        updateCalendarBadge();
         updateAddCalendarCardVisibility();
+        handleGoogleErrorFromUrl();
 
         try {
             await maybeResumeGoogleSessionFromUrl();
@@ -1943,6 +2269,7 @@
             console.error(err);
             setDebugStatus(`Google Calendar connection error: ${err.message}`);
             updateCalendarConnectButtonByNumber(1);
+            updateCalendarBadge();
             updateAddCalendarCardVisibility();
         }
 

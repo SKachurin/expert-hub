@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::services::google_calendar::{
     build_google_oauth_url, exchange_code_for_tokens, fetch_google_calendars,
-    fetch_google_userinfo,
+    fetch_google_userinfo, has_google_calendar_scope,
 };
 use crate::state::{AppState, GoogleOAuthSession};
 
@@ -57,7 +57,14 @@ pub async fn google_callback(
     query: web::Query<GoogleCallbackQuery>,
 ) -> impl Responder {
     if let Some(err) = &query.error {
-        return HttpResponse::BadRequest().body(format!("google oauth error: {}", err));
+        let redirect_url = format!(
+            "/expert-new.html?google_error=oauth_error&google_error_message={}",
+            urlencoding::encode(err),
+        );
+
+        return HttpResponse::Found()
+            .append_header(("Location", redirect_url))
+            .finish();
     }
 
     let code = match &query.code {
@@ -67,17 +74,57 @@ pub async fn google_callback(
 
     let token = match exchange_code_for_tokens(&state.config, code).await {
         Ok(v) => v,
-        Err(e) => return HttpResponse::BadRequest().body(e),
+        Err(e) => {
+            let redirect_url = format!(
+                "/expert-new.html?google_error=token_exchange_failed&google_error_message={}",
+                urlencoding::encode(&e),
+            );
+
+            return HttpResponse::Found()
+                .append_header(("Location", redirect_url))
+                .finish();
+        }
     };
+
+    let granted_scopes = token.scope.clone().unwrap_or_default();
+
+    if !has_google_calendar_scope(Some(&granted_scopes)) {
+        let redirect_url = format!(
+            "/expert-new.html?google_error=calendar_scope_denied&google_scope={}",
+            urlencoding::encode(&granted_scopes),
+        );
+
+        return HttpResponse::Found()
+            .append_header(("Location", redirect_url))
+            .finish();
+    }
 
     let userinfo = match fetch_google_userinfo(&token.access_token).await {
         Ok(v) => v,
-        Err(e) => return HttpResponse::BadRequest().body(e),
+        Err(e) => {
+            let redirect_url = format!(
+                "/expert-new.html?google_error=userinfo_failed&google_error_message={}",
+                urlencoding::encode(&e),
+            );
+
+            return HttpResponse::Found()
+                .append_header(("Location", redirect_url))
+                .finish();
+        }
     };
 
     let calendars = match fetch_google_calendars(&token.access_token).await {
         Ok(v) => v,
-        Err(e) => return HttpResponse::BadRequest().body(e),
+        Err(e) => {
+            let redirect_url = format!(
+                "/expert-new.html?google_error=calendar_list_failed&google_error_message={}",
+                urlencoding::encode(&e),
+            );
+
+            return HttpResponse::Found()
+                .append_header(("Location", redirect_url))
+                .finish();
+        }
     };
 
     let session_id = Uuid::new_v4().to_string();
@@ -102,7 +149,10 @@ pub async fn google_callback(
         Err(_) => return HttpResponse::InternalServerError().body("failed to store google session"),
     }
 
-    let redirect_url = format!("/expert-new.html?google_session={}", urlencoding::encode(&session_id));
+    let redirect_url = format!(
+        "/expert-new.html?google_session={}",
+        urlencoding::encode(&session_id)
+    );
 
     HttpResponse::Found()
         .append_header(("Location", redirect_url))
@@ -124,6 +174,13 @@ pub async fn google_session_get(
     let Some(session) = session else {
         return HttpResponse::NotFound().body("google session not found");
     };
+
+    if !has_google_calendar_scope(session.scopes.as_deref()) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "calendar_scope_denied",
+            "message": "Google Calendar permission was not granted."
+        }));
+    }
 
     HttpResponse::Ok().json(GoogleSessionView {
         session_id: session.session_id,
@@ -154,6 +211,13 @@ pub async fn google_session_select(
             let Some(session) = sessions.get_mut(&session_id) else {
                 return HttpResponse::NotFound().body("google session not found");
             };
+
+            if !has_google_calendar_scope(session.scopes.as_deref()) {
+                return HttpResponse::Forbidden().json(serde_json::json!({
+                    "error": "calendar_scope_denied",
+                    "message": "Google Calendar permission was not granted."
+                }));
+            }
 
             let allowed = session
                 .calendars

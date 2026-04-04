@@ -1,6 +1,5 @@
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Deserialize;
 
 use crate::config::AppConfig;
 use crate::state::GoogleCalendarCandidate;
@@ -20,6 +19,17 @@ pub fn build_google_oauth_url(config: &AppConfig, state: &str) -> String {
         urlencoding::encode(GOOGLE_SCOPE),
         urlencoding::encode(state),
     )
+}
+
+pub fn has_google_calendar_scope(scope_value: Option<&str>) -> bool {
+    let Some(scope_value) = scope_value else {
+        return false;
+    };
+
+    scope_value.split_whitespace().any(|scope| {
+        scope == "https://www.googleapis.com/auth/calendar"
+            || scope == "https://www.googleapis.com/auth/calendar.readonly"
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,8 +67,10 @@ struct GoogleCalendarItem {
     #[serde(default)]
     summary: Option<String>,
     #[serde(default)]
+    #[allow(non_snake_case)]
     timeZone: Option<String>,
     #[serde(default)]
+    #[allow(non_snake_case)]
     accessRole: Option<String>,
     #[serde(default)]
     primary: Option<bool>,
@@ -134,7 +146,7 @@ pub async fn fetch_google_calendars(access_token: &str) -> Result<Vec<GoogleCale
         .await
         .map_err(|e| format!("failed to parse google calendar list: {e}"))?;
 
-    let out = parsed
+    Ok(parsed
         .items
         .into_iter()
         .map(|item| GoogleCalendarCandidate {
@@ -144,7 +156,5 @@ pub async fn fetch_google_calendars(access_token: &str) -> Result<Vec<GoogleCale
             access_role: item.accessRole,
             primary: item.primary.unwrap_or(false),
         })
-        .collect::<Vec<_>>();
-
-    Ok(out)
+        .collect())
 }
