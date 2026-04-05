@@ -1,7 +1,8 @@
+use chrono::{Duration, Utc};
 use rust_decimal::Decimal;
 use sea_orm::TransactionTrait;
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::services::{
     calendar_connections::{
@@ -60,6 +61,39 @@ pub struct RegisterExpertSetupResponse {
     pub expert_id: i64,
     pub created: bool,
     pub calendar_connection_ids: Vec<i64>,
+    pub public_slug: String,
+}
+
+fn build_google_connection_label(
+    account_email: Option<&str>,
+    calendar_name: &str,
+) -> String {
+    match account_email {
+        Some(email) if !email.trim().is_empty() => {
+            format!("Google · {} · {}", email.trim(), calendar_name)
+        }
+        _ => format!("Google · {}", calendar_name),
+    }
+}
+
+fn parse_google_scopes(scopes: Option<&str>) -> Option<Value> {
+    let scopes = scopes?.trim();
+    if scopes.is_empty() {
+        return None;
+    }
+
+    let items: Vec<String> = scopes
+        .split(|c: char| c == ' ' || c == ',')
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    if items.is_empty() {
+        None
+    } else {
+        Some(json!(items))
+    }
 }
 
 pub async fn register_expert_setup(
@@ -137,6 +171,12 @@ pub async fn register_expert_setup(
                     ));
                 }
 
+                let token_expires_at = session
+                    .expires_in
+                    .map(|seconds| Utc::now().fixed_offset() + Duration::seconds(seconds));
+
+                let scopes_json = parse_google_scopes(session.scopes.as_deref());
+
                 for selected_id in &session.selected_calendar_ids {
                     let selected_calendar = session
                         .calendars
@@ -144,14 +184,49 @@ pub async fn register_expert_setup(
                         .find(|c| c.id == *selected_id)
                         .ok_or_else(|| format!("selected google calendar not found: {selected_id}"))?;
 
+                    let connection_label = build_google_connection_label(
+                        session.account_email.as_deref(),
+                        &selected_calendar.summary,
+                    );
+
+                    let provider_metadata = json!({
+                        "oauth_session_id": session.session_id,
+                        "calendar_access_role": selected_calendar.access_role,
+                        "calendar_primary": selected_calendar.primary,
+                        "session_created_at_unix": session.created_at_unix,
+                    });
+
                     let saved = upsert_calendar_connection(
                         &tx,
                         UpsertCalendarConnectionData {
                             expert_id: expert_saved.id,
                             provider: "google".to_string(),
-                            connection_label: Some(selected_calendar.summary.clone()),
+                            connection_label: Some(connection_label),
                             is_primary: calendar_connection_ids.is_empty(),
                             is_enabled: true,
+
+                            connection_status: Some("connected".to_string()),
+                            account_email: session.account_email.clone(),
+                            provider_account_id: session.provider_account_id.clone(),
+                            provider_user_uri: None,
+                            provider_organization_uri: None,
+                            selected_calendar_id: Some(selected_calendar.id.clone()),
+                            selected_calendar_name: Some(selected_calendar.summary.clone()),
+                            selected_calendar_timezone: selected_calendar.time_zone.clone(),
+                            selected_event_type_uri: None,
+                            selected_event_type_name: None,
+                            selected_scheduling_url: None,
+                            access_token: Some(session.access_token.clone()),
+                            refresh_token: session.refresh_token.clone(),
+                            token_expires_at,
+                            scopes_json: scopes_json.clone(),
+                            provider_metadata: Some(provider_metadata),
+                            sync_cursor: None,
+                            last_sync_at: None,
+                            last_sync_status: None,
+                            last_sync_error: None,
+                            webhook_signing_secret: None,
+                            public_link: None,
                         },
                     )
                     .await
@@ -177,6 +252,7 @@ pub async fn register_expert_setup(
 
     Ok(RegisterExpertSetupResponse {
         expert_id: expert_saved.id,
+        public_slug: expert_saved.public_slug,
         created: expert_saved.created,
         calendar_connection_ids,
     })

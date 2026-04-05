@@ -11,6 +11,7 @@ mod m20260319_000008_create_expert_categories_table;
 mod m20260320_000009_create_payments_table;
 mod m20260320_000010_create_telegram_call_events_table;
 mod m20260320_000011_create_calendar_sync_events_table;
+mod m20260322_000012_add_public_slug_to_experts;
 
 pub struct Migrator;
 
@@ -29,6 +30,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260320_000009_create_payments_table::Migration),
             Box::new(m20260320_000010_create_telegram_call_events_table::Migration),
             Box::new(m20260320_000011_create_calendar_sync_events_table::Migration),
+            Box::new(m20260322_000012_add_public_slug_to_experts::Migration),
         ]
     }
 }

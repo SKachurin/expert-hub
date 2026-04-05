@@ -1,6 +1,7 @@
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::entities::calendar_connections;
 
@@ -11,6 +12,29 @@ pub struct UpsertCalendarConnectionData {
     pub connection_label: Option<String>,
     pub is_primary: bool,
     pub is_enabled: bool,
+
+    pub connection_status: Option<String>,
+    pub account_email: Option<String>,
+    pub provider_account_id: Option<String>,
+    pub provider_user_uri: Option<String>,
+    pub provider_organization_uri: Option<String>,
+    pub selected_calendar_id: Option<String>,
+    pub selected_calendar_name: Option<String>,
+    pub selected_calendar_timezone: Option<String>,
+    pub selected_event_type_uri: Option<String>,
+    pub selected_event_type_name: Option<String>,
+    pub selected_scheduling_url: Option<String>,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub token_expires_at: Option<DateTime<FixedOffset>>,
+    pub scopes_json: Option<Value>,
+    pub provider_metadata: Option<Value>,
+    pub sync_cursor: Option<String>,
+    pub last_sync_at: Option<DateTime<FixedOffset>>,
+    pub last_sync_status: Option<String>,
+    pub last_sync_error: Option<String>,
+    pub webhook_signing_secret: Option<String>,
+    pub public_link: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -21,6 +45,9 @@ pub struct UpsertCalendarConnectionResponse {
     pub connection_label: Option<String>,
     pub is_primary: bool,
     pub is_enabled: bool,
+    pub connection_status: String,
+    pub selected_calendar_id: Option<String>,
+    pub selected_calendar_name: Option<String>,
 }
 
 pub async fn upsert_calendar_connection<C>(
@@ -34,9 +61,15 @@ where
 
     let now = Utc::now().fixed_offset();
 
+    let provider = normalize_provider(&data.provider)?;
+    let connection_status = data
+        .connection_status
+        .clone()
+        .unwrap_or_else(|| "pending".to_string());
+
     let active = calendar_connections::ActiveModel {
         expert_id: Set(data.expert_id),
-        provider: Set(normalize_provider(&data.provider)?),
+        provider: Set(provider),
         connection_label: Set(
             data.connection_label
                 .clone()
@@ -51,6 +84,30 @@ where
         ),
         is_primary: Set(data.is_primary),
         is_enabled: Set(data.is_enabled),
+
+        connection_status: Set(connection_status),
+        account_email: Set(data.account_email.clone()),
+        provider_account_id: Set(data.provider_account_id.clone()),
+        provider_user_uri: Set(data.provider_user_uri.clone()),
+        provider_organization_uri: Set(data.provider_organization_uri.clone()),
+        selected_calendar_id: Set(data.selected_calendar_id.clone()),
+        selected_calendar_name: Set(data.selected_calendar_name.clone()),
+        selected_calendar_timezone: Set(data.selected_calendar_timezone.clone()),
+        selected_event_type_uri: Set(data.selected_event_type_uri.clone()),
+        selected_event_type_name: Set(data.selected_event_type_name.clone()),
+        selected_scheduling_url: Set(data.selected_scheduling_url.clone()),
+        access_token: Set(data.access_token.clone()),
+        refresh_token: Set(data.refresh_token.clone()),
+        token_expires_at: Set(data.token_expires_at),
+        scopes_json: Set(data.scopes_json.clone()),
+        provider_metadata: Set(data.provider_metadata.clone()),
+        sync_cursor: Set(data.sync_cursor.clone()),
+        last_sync_at: Set(data.last_sync_at),
+        last_sync_status: Set(data.last_sync_status.clone()),
+        last_sync_error: Set(data.last_sync_error.clone()),
+        webhook_signing_secret: Set(data.webhook_signing_secret.clone()),
+        public_link: Set(data.public_link.clone()),
+
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
@@ -68,6 +125,9 @@ where
         connection_label: model.connection_label,
         is_primary: model.is_primary,
         is_enabled: model.is_enabled,
+        connection_status: model.connection_status,
+        selected_calendar_id: model.selected_calendar_id,
+        selected_calendar_name: model.selected_calendar_name,
     })
 }
 

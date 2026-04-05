@@ -692,6 +692,15 @@
             font-weight: 800;
             line-height: 1.2;
         }
+
+        #work-start,
+        #work-end {
+            color-scheme: dark;
+        }
+
+        /*input[type="time"] {*/
+        /*    color-scheme: dark;*/
+        /*}*/
     </style>
 
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
@@ -1047,6 +1056,89 @@
         ]
     };
 
+    // Telegram user management
+    const TELEGRAM_USER_KEY = IS_DEV
+        ? 'Dev_expertHubTelegramUserV1'
+        : 'expertHubTelegramUserV1';
+
+    const TELEGRAM_USER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+    function getStoredTelegramUser() {
+        try {
+            const raw = localStorage.getItem(TELEGRAM_USER_KEY);
+            if (!raw) return null;
+
+            const parsed = JSON.parse(raw);
+            if (!parsed || !parsed.user || !parsed.user.id) {
+                localStorage.removeItem(TELEGRAM_USER_KEY);
+                return null;
+            }
+
+            if (!parsed.expires_at || Date.now() > parsed.expires_at) {
+                localStorage.removeItem(TELEGRAM_USER_KEY);
+                return null;
+            }
+
+            return parsed.user;
+        } catch {
+            localStorage.removeItem(TELEGRAM_USER_KEY);
+            return null;
+        }
+    }
+
+    function saveTelegramUser(user) {
+        if (!user || !user.id) return null;
+
+        const storedUser = {
+            id: user.id,
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            username: user.username || '',
+            photo_url: user.photo_url || ''
+        };
+
+        localStorage.setItem(
+            TELEGRAM_USER_KEY,
+            JSON.stringify({
+                user: storedUser,
+                expires_at: Date.now() + TELEGRAM_USER_TTL_MS
+            })
+        );
+
+        return storedUser;
+    }
+
+    function clearStoredTelegramUser() {
+        localStorage.removeItem(TELEGRAM_USER_KEY);
+    }
+
+    function getMiniAppTelegramUser() {
+        const miniUser = window.Telegram?.WebApp?.initDataUnsafe?.user || null;
+
+        if (!miniUser) {
+            return null;
+        }
+
+        return {
+            id: miniUser.id,
+            first_name: miniUser.first_name || '',
+            last_name: miniUser.last_name || '',
+            username: miniUser.username || '',
+            photo_url: miniUser.photo_url || ''
+        };
+    }
+
+    function resolveTelegramUser() {
+        const miniUser = getMiniAppTelegramUser();
+
+        if (miniUser) {
+            return saveTelegramUser(miniUser);
+        }
+
+        return getStoredTelegramUser();
+    }
+
+
     function escapeHtml(value) {
         return String(value ?? '')
             .replaceAll('&', '&amp;')
@@ -1101,29 +1193,6 @@
         el.classList.toggle('disconnected', !connected);
     }
 
-    function saveTelegramUserToSession(user) {
-        if (!user) return;
-
-        sessionStorage.setItem('expertHubTelegramUser', JSON.stringify({
-            id: user.id,
-            first_name: user.first_name || '',
-            last_name: user.last_name || '',
-            username: user.username || '',
-            photo_url: user.photo_url || ''
-        }));
-    }
-
-    function loadTelegramUserFromSession() {
-        try {
-            const raw = sessionStorage.getItem('expertHubTelegramUser');
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            return parsed && parsed.id ? parsed : null;
-        } catch (e) {
-            console.error('Failed to read Telegram user from sessionStorage:', e);
-            return null;
-        }
-    }
 
     function saveExpertDraft() {
         localStorage.setItem(EXPERT_DRAFT_KEY, JSON.stringify(expertDraft));
@@ -1224,10 +1293,12 @@
 
         setStepState(stepTelegramEl, 'Connected', true);
 
-        if (!displayNameEl.value.trim()) {
+        if (!expertDraft.display_name.trim()) {
             expertDraft.display_name = fullName(user);
+        }
+
+        if (!displayNameEl.value.trim()) {
             displayNameEl.value = expertDraft.display_name;
-            saveExpertDraft();
         }
     }
 
@@ -1414,7 +1485,7 @@
 
             const verifiedUser = await r.json();
             currentTelegramUser = verifiedUser;
-            saveTelegramUserToSession(verifiedUser);
+            saveTelegramUser(verifiedUser);
             renderProfileCard(verifiedUser);
             updateRegisterButtonState();
             setDebugStatus('Telegram connected on web.');
@@ -1425,16 +1496,6 @@
     };
 
     async function initTelegramState() {
-        const storedUser = loadTelegramUserFromSession();
-
-        if (storedUser) {
-            currentTelegramUser = storedUser;
-            renderProfileCard(currentTelegramUser);
-            updateRegisterButtonState();
-            setDebugStatus('Telegram user restored from session.');
-            return;
-        }
-
         const tg = window.Telegram?.WebApp;
 
         if (tg) {
@@ -1444,25 +1505,16 @@
             } catch (e) {
                 console.error('Telegram WebApp setup error', e);
             }
+        }
 
-            const initDataRaw = tg.initData || '';
-            const miniUser = tg.initDataUnsafe?.user || null;
+        const resolvedUser = resolveTelegramUser();
 
-            if (initDataRaw && miniUser) {
-                currentTelegramUser = {
-                    id: miniUser.id,
-                    first_name: miniUser.first_name || '',
-                    last_name: miniUser.last_name || '',
-                    username: miniUser.username || '',
-                    photo_url: miniUser.photo_url || ''
-                };
-
-                saveTelegramUserToSession(currentTelegramUser);
-                renderProfileCard(currentTelegramUser);
-                updateRegisterButtonState();
-                setDebugStatus('Telegram Mini App user detected.');
-                return;
-            }
+        if (resolvedUser?.id) {
+            currentTelegramUser = resolvedUser;
+            renderProfileCard(currentTelegramUser);
+            updateRegisterButtonState();
+            setDebugStatus('Telegram user restored.');
+            return;
         }
 
         renderProfileCard(null);
@@ -1492,9 +1544,6 @@
     }
 
     function initFormDefaults() {
-        loadExpertDraft();
-        loadCalendarDraft();
-
         if (!expertDraft.timezone) {
             expertDraft.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         }
@@ -1634,7 +1683,13 @@
             try {
                 setDebugStatus('Registering expert...');
                 const saved = await registerExpert();
-                setDebugStatus(`Expert saved. id=${saved.expert_id}${saved.created ? ' created' : ' updated'}.`);
+
+                setDebugStatus('Expert saved. Redirecting...');
+
+                const successUrl = new URL('/created.html', window.location.origin);
+                successUrl.searchParams.set('slug', saved.public_slug);
+
+                window.location.href = successUrl.toString();
             } catch (err) {
                 console.error(err);
                 setDebugStatus(`Registration error: ${err.message}`);
@@ -1725,7 +1780,7 @@
 
             const user = await r.json();
             currentTelegramUser = user;
-            saveTelegramUserToSession(user);
+            saveTelegramUser(user);
             renderProfileCard(user);
 
             if (!displayNameEl.value.trim()) {
@@ -1949,7 +2004,7 @@
             }
 
             if (provider === 'google') {
-                const tgUser = currentTelegramUser || loadTelegramUserFromSession();
+                const tgUser = currentTelegramUser || getStoredTelegramUser();
 
                 if (!tgUser?.id) {
                     showTelegramRequiredModal('Connect Telegram first.');
@@ -2243,10 +2298,12 @@
 
     //startup all
     (async () => {
-        renderProfileCard(null);
         updateWalletUi(null);
         initFormListeners();
         initAddCalendarCard();
+
+        loadExpertDraft();
+        loadCalendarDraft();
 
         await initTelegramState();
         initFormDefaults();

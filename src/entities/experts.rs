@@ -31,6 +31,7 @@ pub struct Model {
     pub is_bookable: bool,
     pub expert_rating: Decimal,
     pub reviews_count: i32,
+    pub public_slug: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

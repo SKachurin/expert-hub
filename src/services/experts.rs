@@ -1,12 +1,12 @@
 use chrono::{NaiveTime, Utc};
 use rust_decimal::Decimal;
+use serde::Serialize;
+use serde_json::Value;
+use crate::entities::experts;
+use rand::{distributions::Alphanumeric, Rng};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
 };
-use serde::Serialize;
-use serde_json::Value;
-
-use crate::entities::experts;
 
 #[derive(Debug)]
 pub struct UpsertExpertData {
@@ -35,6 +35,7 @@ pub struct UpsertExpertResponse {
     pub display_name: String,
     pub ton_wallet_address: String,
     pub timezone: String,
+    pub public_slug: String,
     pub created: bool,
 }
 
@@ -91,6 +92,7 @@ where
                 .map_err(|e| format!("failed to update expert: {e}"))?
         }
         None => {
+            let public_slug = generate_unique_public_slug(db, &data.username, &display_name).await?;
             let active = experts::ActiveModel {
                 telegram_id: Set(data.telegram_id),
                 first_name: Set(data.first_name.clone()),
@@ -113,6 +115,7 @@ where
                 buffer_before_minutes: Set(0),
                 buffer_after_minutes: Set(0),
                 max_days_ahead: Set(30),
+                public_slug: Set(public_slug),
                 created_at: Set(now),
                 updated_at: Set(now),
                 ..Default::default()
@@ -132,6 +135,7 @@ where
         display_name: model.display_name,
         ton_wallet_address: model.ton_wallet_address,
         timezone: model.timezone,
+        public_slug: model.public_slug,
         created,
     })
 }
@@ -195,4 +199,82 @@ fn optional_trimmed_string(value: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn slugify_part(input: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+
+    for ch in input.trim().to_lowercase().chars() {
+        let mapped = match ch {
+            'a'..='z' | '0'..='9' => Some(ch),
+            '_' | ' ' | '-' => Some('-'),
+            _ => None,
+        };
+
+        if let Some(c) = mapped {
+            if c == '-' {
+                if !prev_dash && !out.is_empty() {
+                    out.push('-');
+                    prev_dash = true;
+                }
+            } else {
+                out.push(c);
+                prev_dash = false;
+            }
+        }
+    }
+
+    out.trim_matches('-').to_string()
+}
+
+fn short_suffix() -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect::<String>()
+        .to_lowercase()
+}
+
+async fn generate_unique_public_slug<C: ConnectionTrait>(
+    db: &C,
+    username: &str,
+    display_name: &str,
+) -> Result<String, String> {
+    let mut base = if !username.trim().is_empty() {
+        slugify_part(username)
+    } else {
+        slugify_part(display_name)
+    };
+
+    if base.is_empty() {
+        base = "expert".to_string();
+    }
+
+    let exists = crate::entities::experts::Entity::find()
+        .filter(crate::entities::experts::Column::PublicSlug.eq(base.clone()))
+        .one(db)
+        .await
+        .map_err(|e| format!("failed to check public slug: {e}"))?;
+
+    if exists.is_none() {
+        return Ok(base);
+    }
+
+    for _ in 0..20 {
+        let candidate = format!("{}-{}", base, short_suffix());
+
+        let exists = crate::entities::experts::Entity::find()
+            .filter(crate::entities::experts::Column::PublicSlug.eq(candidate.clone()))
+            .one(db)
+            .await
+            .map_err(|e| format!("failed to check public slug: {e}"))?;
+
+        if exists.is_none() {
+            return Ok(candidate);
+        }
+    }
+
+    Err("failed to generate unique public slug".to_string())
 }

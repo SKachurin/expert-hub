@@ -44,19 +44,22 @@ services:
       - app
     volumes:
       - /home/serg/.ssh/expert_hub_vps:/root/.ssh/expert_hub_vps:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - /bin/sh
       - -ec
       - |
         apk add --no-cache openssh-client
         mkdir -p /root/.ssh
-        exec ssh \
+        ssh \
           -o StrictHostKeyChecking=no \
           -o ServerAliveInterval=30 \
           -o ServerAliveCountMax=3 \
+          -o ExitOnForwardFailure=yes \
           -i /root/.ssh/expert_hub_vps \
           -NT \
-          -R 18080:app:8080 \
+          -R 18080:host.docker.internal:8080 \
           root@108.181.246.49
     restart: unless-stopped
 
