@@ -1,0 +1,89 @@
+/* /public/css/created.css */
+
+.success-card,
+.links-card,
+.actions-card {
+    padding: 18px;
+}
+
+.success-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    color: #ddfff0;
+    background: rgba(49, 196, 141, 0.12);
+    border: 1px solid rgba(49, 196, 141, 0.24);
+}
+
+.success-title {
+    margin: 14px 0 0;
+    font-size: 26px;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    font-weight: 800;
+}
+
+.success-note {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.55;
+}
+
+.link-box {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.link-label {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+}
+
+.link-value {
+    margin: 10px 0 0;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-all;
+}
+
+.mini-list {
+    margin-top: 14px;
+    display: grid;
+    gap: 10px;
+}
+
+.mini-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.mini-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.mini-sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--muted-2);
+    line-height: 1.45;
+}
