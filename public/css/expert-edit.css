@@ -3,24 +3,100 @@
 .existing-calendar-list {
     display: grid;
     gap: 14px;
+    margin-top: 10px;
+    margin-bottom: 18px;
 }
 
 .existing-calendar-card {
     position: relative;
     border: 1px solid rgba(255,255,255,.12);
     border-radius: 18px;
-    padding: 16px 18px;
+    padding: 18px 20px;
     background: rgba(255,255,255,.04);
+}
+
+.existing-calendar-title {
+    font-size: 18px;
+    line-height: 1.35;
+    font-weight: 700;
+    color: #f3f7ff;
+    margin-right: 64px;
+    margin-bottom: 6px;
+}
+
+.existing-calendar-subline {
+    font-size: 14px;
+    line-height: 1.45;
+    color: rgba(243,247,255,.72);
 }
 
 .existing-calendar-delete {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 32px;
-    height: 32px;
+    top: 16px;
+    right: 16px;
+    width: 34px;
+    height: 34px;
     border: 0;
     border-radius: 999px;
     cursor: pointer;
-    font-size: 20px;
+    font-size: 16px;
+    line-height: 1;
+    color: #111;
+    background: #fff;
+}
+
+.add-calendar-card {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 22px 24px;
+    margin: 8px 0 0;
+    border: 1px solid rgba(110, 160, 255, 0.28);
+    border-radius: 28px;
+    background: rgba(90, 140, 220, 0.16);
+    color: #f3f7ff;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.add-calendar-card:hover {
+    border-color: rgba(110, 160, 255, 0.42);
+    background: rgba(90, 140, 220, 0.22);
+}
+
+.add-calendar-card__icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid rgba(110, 160, 255, 0.4);
+    color: #dbe7ff;
+    flex-shrink: 0;
+}
+
+.add-calendar-card__icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.add-calendar-card__text {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.toggle-list--stacked {
+    display: grid;
+    gap: 16px;
+}
+
+.toggle-list--stacked .toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 0;
 }

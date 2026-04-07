@@ -403,6 +403,32 @@ async function saveExpertData() {
     }
 }
 
+function buildExistingCalendarTitle(item) {
+    const providerName = item.provider === 'google'
+        ? 'Google'
+        : (item.provider || 'Calendar');
+
+    const calendarName = item.selected_calendar_name && item.selected_calendar_name.trim()
+        ? item.selected_calendar_name.trim()
+        : 'Primary calendar';
+
+    return `${providerName} · ${calendarName}`;
+}
+
+function buildExistingCalendarMeta(item) {
+    const lines = [];
+
+    if (item.account_email && item.account_email.trim()) {
+        lines.push(item.account_email.trim());
+    }
+
+    if (item.selected_calendar_timezone && item.selected_calendar_timezone.trim()) {
+        lines.push(item.selected_calendar_timezone.trim());
+    }
+
+    return lines;
+}
+
 function renderExistingCalendarConnections() {
     if (!existingCalendarListEl) return;
 
@@ -416,6 +442,11 @@ function renderExistingCalendarConnections() {
     existingCalendarConnections.forEach((item) => {
         const card = document.createElement('div');
         card.className = 'existing-calendar-card';
+
+        const metaLines = buildExistingCalendarMeta(item)
+            .map((line) => `<div class="existing-calendar-subline">${escapeHtml(line)}</div>`)
+            .join('');
+
         card.innerHTML = `
             <button
                 type="button"
@@ -424,10 +455,10 @@ function renderExistingCalendarConnections() {
                 aria-label="Delete calendar"
             >×</button>
 
-            <div><strong>${escapeHtml(item.connection_label || item.provider || 'Calendar')}</strong></div>
-            ${item.selected_calendar_name ? `<div>${escapeHtml(item.selected_calendar_name)}</div>` : ''}
-            ${item.selected_calendar_timezone ? `<div>${escapeHtml(item.selected_calendar_timezone)}</div>` : ''}
+            <div class="existing-calendar-title">${escapeHtml(buildExistingCalendarTitle(item))}</div>
+            ${metaLines}
         `;
+
         existingCalendarListEl.appendChild(card);
     });
 
@@ -496,6 +527,18 @@ function addPendingGoogleSession(sessionId) {
     }
 }
 
+function buildPrimaryCalendarOptionLabel(item) {
+    const providerName = item.provider === 'google'
+        ? 'Google'
+        : (item.provider || 'Calendar');
+
+    const calendarName = item.selected_calendar_name && item.selected_calendar_name.trim()
+        ? item.selected_calendar_name.trim()
+        : 'Primary calendar';
+
+    return `${providerName} · ${calendarName}`;
+}
+
 function populatePrimaryCalendarOptions(items, selectedId) {
     if (!primaryCalendarEl) return;
 
@@ -512,7 +555,7 @@ function populatePrimaryCalendarOptions(items, selectedId) {
     items.forEach((item) => {
         const option = document.createElement('option');
         option.value = String(item.id);
-        option.textContent = item.connection_label || item.provider || `Calendar ${item.id}`;
+        option.textContent = buildPrimaryCalendarOptionLabel(item);
         option.selected = Number(selectedId) === Number(item.id);
         primaryCalendarEl.appendChild(option);
     });
@@ -566,8 +609,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentTelegramUser = resolveTelegramUser();
     renderProfileCard(currentTelegramUser);
 
-    await loadExpertData();
-    initTonConnectForEdit();
+    if (currentTelegramUser?.id) {
+        await loadExpertData();
+        initTonConnectForEdit();
+    } else {
+        setDebugStatus('Authorize with Telegram to load this profile.');
+    }
 
     const returnedGoogleSessionId = consumeGoogleSessionFromUrl();
     if (returnedGoogleSessionId) {

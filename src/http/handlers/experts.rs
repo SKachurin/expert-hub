@@ -1,4 +1,5 @@
 use actix_web::{delete, get, post, web, HttpResponse};
+use serde::Deserialize;
 use chrono::{Duration, Utc};
 use crate::{
     services::{
@@ -9,6 +10,7 @@ use crate::{
         },
         experts::{
             get_edit_expert_by_slug,
+            get_public_expert_by_slug,
             update_expert_profile_by_slug,
             upsert_expert,
             UpdateExpertProfileRequest,
@@ -18,6 +20,12 @@ use crate::{
     state::AppState,
 };
 
+#[derive(Debug, Deserialize)]
+pub struct PublicExpertQuery {
+    #[serde(default)]
+    pub offset_days: i64,
+}
+
 #[post("/experts/upsert")]
 pub async fn upsert_expert_handler(
     state: web::Data<AppState>,
@@ -25,6 +33,35 @@ pub async fn upsert_expert_handler(
 ) -> HttpResponse {
     match upsert_expert(&state.db, body.into_inner()).await {
         Ok(response) => HttpResponse::Ok().json(response),
+        Err(err) => HttpResponse::BadRequest().json(serde_json::json!({
+            "status": "error",
+            "message": err
+        })),
+    }
+}
+
+#[get("/api/experts/{slug}/public")]
+pub async fn get_public_expert_handler(
+    state: web::Data<AppState>,
+    slug: web::Path<String>,
+    _query: web::Query<PublicExpertQuery>,
+) -> HttpResponse {
+    match get_public_expert_by_slug(&state.db, slug.into_inner()).await {
+        Ok(expert) => HttpResponse::Ok().json(serde_json::json!({
+            "expert": expert,
+            "availability": {
+                "period_start": "",
+                "period_end": "",
+                "days": []
+            },
+            "reviews": []
+        })),
+        Err(err) if err == "expert not found" => {
+            HttpResponse::NotFound().json(serde_json::json!({
+                "status": "error",
+                "message": err
+            }))
+        }
         Err(err) => HttpResponse::BadRequest().json(serde_json::json!({
             "status": "error",
             "message": err

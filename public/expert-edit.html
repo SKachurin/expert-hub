@@ -159,44 +159,48 @@
     <section class="panel form-card">
         <div class="section-head">
             <div>
-                <h2 class="section-title">Calendar and visibility</h2>
-                <p class="section-note">Choose your main calendar and whether people can book calls with you.</p>
+                <h2 class="section-title">Calendar</h2>
+                <p class="section-note">Choose your main calendar for bookings.</p>
             </div>
         </div>
 
-        <section class="panel">
-            <div class="section-head">
-                <div>
-                    <h2 class="section-title">Connected calendars</h2>
-                    <p class="section-note">Delete existing calendars or connect another one below.</p>
-                </div>
-            </div>
-
-            <div id="existing-calendar-list" class="existing-calendar-list"></div>
-            <div class="field">
-                <button id="connect-google-calendar-btn" class="btn btn-secondary" type="button">
-                    Connect another Google calendar
-                </button>
-            </div>
-        </section>
+        <div id="existing-calendar-list" class="existing-calendar-list"></div>
 
         <div class="form-grid">
             <div class="field">
                 <label for="primary-calendar">My main calendar</label>
                 <select id="primary-calendar"></select>
             </div>
+        </div>
+    </section>
 
-            <div class="toggle-list">
-                <label class="toggle-row">
-                    <span>Visible in marketplace</span>
-                    <input id="is-active" type="checkbox"/>
-                </label>
+    <button id="connect-google-calendar-btn" class="add-calendar-card" type="button">
+    <span class="add-calendar-card__icon">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+    </span>
+        <span class="add-calendar-card__text">Connect another calendar</span>
+    </button>
 
-                <label class="toggle-row">
-                    <span>Available for calls</span>
-                    <input id="is-bookable" type="checkbox"/>
-                </label>
+    <section class="panel form-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Visibility</h2>
+                <p class="section-note">Control whether your profile is shown and whether people can book calls.</p>
             </div>
+        </div>
+
+        <div class="toggle-list toggle-list--stacked">
+            <label class="toggle-row">
+                <span>Visible in marketplace</span>
+                <input id="is-active" type="checkbox"/>
+            </label>
+
+            <label class="toggle-row">
+                <span>Available for calls</span>
+                <input id="is-bookable" type="checkbox"/>
+            </label>
         </div>
     </section>
 

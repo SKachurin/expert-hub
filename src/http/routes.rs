@@ -20,11 +20,16 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(experts::get_edit_expert_handler);
     cfg.service(experts::update_edit_expert_handler);
     cfg.service(experts::delete_calendar_connection_handler);
+    cfg.service(experts::get_public_expert_handler);
+    cfg.service(experts::get_edit_expert_handler);
+    cfg.service(experts::update_edit_expert_handler);
+    cfg.service(experts::delete_calendar_connection_handler);
 
     cfg.service(google_calendar::google_start);
     cfg.service(google_calendar::google_callback);
     cfg.service(google_calendar::google_session_get);
     cfg.service(google_calendar::google_session_select);
 
+    cfg.service(pages::expert_public_page);
     cfg.service(pages::expert_edit_page);
 }
