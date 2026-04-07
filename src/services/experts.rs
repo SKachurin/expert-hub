@@ -9,8 +9,6 @@ use serde_json::Value;
 
 use crate::entities::experts;
 use crate::entities::calendar_connections;
-use crate::services::calendar_connections::CalendarConnectionView;
-use crate::state::GoogleOAuthSession;
 
 #[derive(Debug, Deserialize)]
 pub struct UpsertExpertRequest {

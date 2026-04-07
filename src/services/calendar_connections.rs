@@ -1,5 +1,5 @@
 use chrono::{DateTime, FixedOffset, Utc};
-use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, EntityTrait, Set, DeleteResult};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -151,4 +151,30 @@ fn normalize_provider(value: &str) -> Result<String, String> {
         "calendly" => Ok("calendly".to_string()),
         _ => Err(format!("unsupported calendar provider: {value}")),
     }
+}
+
+pub async fn delete_calendar_connection_for_expert<C>(
+    db: &C,
+    expert_id: i64,
+    connection_id: i64,
+) -> Result<(), String>
+where
+    C: ConnectionTrait,
+{
+    let existing = calendar_connections::Entity::find_by_id(connection_id)
+        .one(db)
+        .await
+        .map_err(|e| format!("failed to load calendar connection: {e}"))?
+        .ok_or_else(|| "calendar connection not found".to_string())?;
+
+    if existing.expert_id != expert_id {
+        return Err("calendar connection does not belong to this expert".to_string());
+    }
+
+    calendar_connections::Entity::delete_by_id(connection_id)
+        .exec(db)
+        .await
+        .map_err(|e| format!("failed to delete calendar connection: {e}"))?;
+
+    Ok(())
 }

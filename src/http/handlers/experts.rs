@@ -1,6 +1,5 @@
 use actix_web::{delete, get, post, web, HttpResponse};
 use chrono::{Duration, Utc};
-
 use crate::{
     services::{
         calendar_connections::{
