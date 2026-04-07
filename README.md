@@ -2,9 +2,9 @@
 
 Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web, PostgreSQL, SeaORM, static frontend pages, Telegram web auth / Mini App context, TON wallet connection, and Google Calendar OAuth integration.
 
-The project is currently focused on **Phase 1: expert onboarding**.
+The project is currently focused on **Phase 1: expert onboarding and public expert pages**.
 
-At this stage, the system already has:
+At this stage, the project already has:
 
 - Rust backend with `actix-web`
 - PostgreSQL in Docker
@@ -13,38 +13,41 @@ At this stage, the system already has:
 - Telegram web auth verification endpoint
 - Telegram Mini App user detection on frontend
 - TON wallet connection on frontend
-- expert onboarding page
 - marketplace shell page
+- expert onboarding page
 - expert setup registration backend flow
+- public slug support for experts
+- profile-created success page
+- expert public page shell
+- expert edit page shell
 - database tables for experts, calendar connections, bookings, payments, reviews, tags, categories, and sync events
-- environment split for dev/prod Telegram bot auth
-- Google OAuth credentials wired in env / deploy flow
+- environment split for dev and prod Telegram bot auth
+- Google OAuth credentials wired into runtime flow
 - working Google OAuth callback flow
 - frontend Google Calendar connection UI
 - selection of up to 2 calendars per Google connection
 - support for adding up to 5 calendar connection blocks in expert onboarding
-- expert registration successfully creating expert records in DB
 
 ---
 
 ## Current project stage
 
-The app is not a full marketplace yet.
+The app is **not a full marketplace yet**.
 
-Right now the real implemented focus is:
+Right now the real implemented direction is:
 
 1. expert opens onboarding flow
 2. connects Telegram
 3. connects TON wallet
-4. fills expert profile basics
+4. fills basic expert profile fields
 5. connects Google Calendar
 6. selects calendars from Google account
 7. optionally adds more calendar connection blocks
 8. submits expert setup to backend
-9. backend creates or updates expert and related calendar connection records
+9. backend creates or updates expert and related calendar connection rows
+10. backend generates and serves expert public/edit page routes based on `public_slug`
 
-This means the project already has the backend and DB foundation for expert records and related structures, plus a working Phase 1 onboarding flow.  
-Real booking / payment / scheduling / availability sync logic is still incomplete.
+This means the project already has the backend and DB foundation for expert records and related structures, plus a working Phase 1 onboarding flow. Booking, payment finalization, real availability sync, session detection, and reviews are still incomplete.
 
 ---
 
@@ -60,9 +63,10 @@ Real booking / payment / scheduling / availability sync logic is still incomplet
 - Reqwest
 - UUID
 - Chrono
+- Rust Decimal
 
 ### Frontend
-- Static HTML/CSS/JS
+- Static HTML / CSS / JS
 - Telegram WebApp JS
 - TON Connect UI
 
@@ -70,19 +74,19 @@ Real booking / payment / scheduling / availability sync logic is still incomplet
 - Docker / Docker Compose
 - GitHub Actions deploy flow
 - separate dev and prod environments
+- reverse SSH tunnel in local dev for `dev.experthub.bar`
 
 ---
 
-## Main pages
+## Current main pages
 
 ### `/`
 Marketplace shell page.
 
-This is currently a placeholder public homepage for the future marketplace.  
-It already explains the project direction and links to expert onboarding.
+This is currently a placeholder public homepage for the future marketplace. It explains the direction and links to expert onboarding.
 
 ### `/expert-new.html`
-Main expert onboarding page for Phase 1.
+Main expert onboarding page.
 
 This page currently handles:
 
@@ -96,6 +100,27 @@ This page currently handles:
 - selecting up to 2 calendars from a Google account
 - multiple calendar connection blocks
 - expert registration request to backend
+
+### `/created.html?slug={public_slug}`
+Success page shown after expert creation.
+
+This page shows:
+
+- public expert link
+- edit page link
+- next-step hints for the expert
+
+### `/e/{slug}`
+Public expert page route.
+
+This is the public expert page shell for a direct expert URL.  
+Frontend JS is expected to load public expert data and availability data from backend API routes.
+
+### `/e/{slug}/edit`
+Expert edit page route.
+
+This is the private editing page shell for a specific expert slug.  
+It is intended to become the full editor for expert-controlled profile fields.
 
 ---
 
@@ -118,8 +143,9 @@ Currently placeholder-style endpoint for wallet linking flow.
 
 ### Expert setup
 - `POST /expert-setup/register`
+- `POST /experts/upsert`
 
-Creates or updates expert setup data and related calendar connection data.
+Expert creation / update flow used during onboarding and service-level expert persistence.
 
 ### Google OAuth / calendar session
 - `GET /oauth/google/start`
@@ -129,13 +155,27 @@ Creates or updates expert setup data and related calendar connection data.
 
 These routes handle Google OAuth redirect, temporary OAuth session storage, Google calendar list loading, and user calendar selection.
 
+### Expert page / profile routes
+- `GET /e/{slug}`
+- `GET /e/{slug}/edit`
+
+These routes return the static page shells for public and edit expert pages.
+
+### Expert API direction
+The project now also has expert-service work around:
+- public expert lookup by slug
+- edit expert lookup by slug
+- expert profile update by slug
+
+The exact final API shape is still being stabilized.
+
 ---
 
 ## Current database direction
 
 The project already includes entities and migrations for the main marketplace foundation.
 
-Important tables/entities currently present in project work:
+Important tables/entities currently present:
 
 - `experts`
 - `calendar_connections`
@@ -149,16 +189,67 @@ Important tables/entities currently present in project work:
 - `expert_tags`
 - `telegram_call_events`
 
-Not all of them are fully used yet in frontend flow, but the schema foundation is already being built for the marketplace MVP.
+Not all of them are fully used yet in frontend flow, but the schema foundation is already in place for the marketplace MVP.
+
+### Important expert fields already present in DB
+
+The `experts` table already includes fields for:
+
+- Telegram identity
+- display name
+- bio
+- photo URL
+- TON wallet address
+- timezone
+- hourly rate
+- currency
+- working days
+- work start time
+- work end time
+- allowed session durations
+- minimum notice minutes
+- buffer before minutes
+- buffer after minutes
+- max days ahead
+- calendar conflict mode
+- booking target strategy
+- active flag
+- bookable flag
+- expert rating
+- reviews count
+- public slug
+
+### Important calendar connection fields already present in DB
+
+The `calendar_connections` table already includes fields for:
+
+- provider
+- connection label
+- primary / enabled flags
+- connection status
+- account email
+- provider account id
+- selected calendar id / name / timezone
+- selected scheduling URL / event type fields
+- access token / refresh token
+- token expiry
+- scopes JSON
+- provider metadata
+- sync cursor / last sync info
+- public link
+
+This means the DB is already wider than the current UI.
 
 ---
 
 ## Telegram auth logic
 
-The project supports two contexts:
+The project supports two contexts.
 
 ### 1. Telegram Mini App context
-If the page is opened inside Telegram Mini App, frontend reads Telegram user from `window.Telegram.WebApp.initDataUnsafe.user`.
+If the page is opened inside Telegram Mini App, frontend reads Telegram user from:
+
+`window.Telegram.WebApp.initDataUnsafe.user`
 
 ### 2. Web auth fallback
 If the page is opened in a normal browser, frontend uses Telegram OAuth widget / embed flow and then sends auth payload to backend `POST /tg-auth` for verification.
@@ -172,7 +263,7 @@ This split is important because Telegram auth hash verification must use the mat
 
 ---
 
-## TON wallet
+## TON wallet status
 
 Frontend already integrates TON Connect UI.
 
@@ -182,8 +273,7 @@ Current behavior:
 - connected wallet address is shown in UI
 - wallet address is included in expert registration payload
 
-At this stage wallet connection is onboarding-level only.  
-Real payment flow and smart contract flow are planned later.
+At this stage wallet connection is onboarding-level only. Real payment flow and smart contract settlement logic are planned later.
 
 ---
 
@@ -207,20 +297,15 @@ The current onboarding page collects and submits:
 
 Backend registration flow creates or updates expert data and stores related calendar connection rows.
 
-The registration flow is now working end-to-end at MVP onboarding level for expert creation.
+The registration flow is working at MVP onboarding level for expert creation.
 
-### Important current backend detail
-During expert registration, the backend currently creates `calendar_connections` rows, but these rows are still saved in a **minimal placeholder form**.
+### Current known limitation in registration
 
-Right now the registration insert is saving mainly:
+During expert registration, backend creates `calendar_connections` rows, but those rows are still not fully hydrated with all provider-backed fields.
 
-- `expert_id`
-- `provider`
-- `connection_label`
-- `is_primary`
-- `is_enabled`
+Right now the registration insert is still closer to a minimal placeholder form than a final synchronized provider record.
 
-As a result, many richer provider-related columns are still left empty at registration time, including fields such as:
+That means fields such as these may still remain empty or incomplete after onboarding:
 
 - `account_email`
 - `provider_account_id`
@@ -231,7 +316,7 @@ As a result, many richer provider-related columns are still left empty at regist
 - `refresh_token`
 - `scopes_json`
 
-Because of that, newly created Google calendar connection rows currently remain in a default / placeholder-style DB state rather than a fully hydrated provider-connected state.
+So onboarding UI works, but calendar connection persistence is not yet fully finished.
 
 ---
 
@@ -240,9 +325,8 @@ Because of that, newly created Google calendar connection rows currently remain 
 Calendar integration is now **partially real and working for onboarding**.
 
 ### Already done
-- calendar connection entities and migrations were added
-- backend service for calendar connection records exists
-- Google OAuth env wiring was added into project/deploy flow
+- calendar connection entities and migrations exist
+- Google OAuth env wiring was added
 - real Google OAuth redirect flow is implemented
 - Google account info can be loaded after OAuth
 - Google calendar list can be loaded
@@ -254,84 +338,151 @@ Calendar integration is now **partially real and working for onboarding**.
 - expert registration creates corresponding `calendar_connections` rows in DB
 
 ### Still not finished
-- Google OAuth sessions are currently temporary backend runtime state, not durable storage
+- Google OAuth sessions are still temporary backend runtime state, not durable storage
 - on backend restart, previously temporary Google OAuth session ids are lost
-- frontend still needs a proper “revalidate connected calendar session on reload” flow
-- backend registration does **not yet fully map Google session data into `calendar_connections`**
-- `calendar_connections` rows are currently created with placeholder/minimal data and often remain in `pending` state
+- backend registration does not yet fully map Google session data into `calendar_connections`
+- `calendar_connections` rows are still closer to minimal / pending rows than final provider-connected rows
 - real calendar sync / free-busy import is not implemented yet
 - Calendly is still placeholder only
 - connected calendar editing UX is still basic
-- the calendar picker still uses a browser prompt, not a custom in-page modal/list UI
+- calendar picker still uses a browser prompt instead of a custom in-page modal/list UI
 
 So calendar support is now **real for onboarding**, but not yet production-complete.
 
 ---
 
-## Important current limitation
+## Public expert page status
 
-Google OAuth session data is currently stored temporarily in backend runtime memory before final expert registration.
+Public slug support exists and public expert page HTML is now served.
 
-That means:
+Current direction of the public page:
 
-- the frontend can keep local draft data
-- but the actual Google access token / calendar session cannot live only in frontend storage
-- if backend runtime memory is lost before final registration, the frontend can still show local draft state, but the Google session may no longer exist server-side
+- show public expert data
+- show rates
+- show allowed consultation durations
+- later show free slots in a 7-day window
+- later page through next 7-day windows
+- do not expose names/details of busy calendar events
+- keep personal event data private
 
-This is the main current limitation in calendar onboarding flow.
+### Important current dev note
+The public page route is sensitive to route shape and static-serving order.  
+The current route without trailing slash is the intended one:
 
-A second important limitation is that final registration currently creates DB rows for selected calendar connections, but does not yet persist the full Google provider/session metadata into those rows.
+- good: `/e/{slug}`
+- bad in current dev setup: `/e/{slug}/`
 
-The next logical cleanup step is:
-
-1. backend session revalidation / graceful invalidation on reload
-2. full mapping of Google session data into `calendar_connections` during registration
-
----
-
-## Google OAuth env variables
-
-The project now expects Google OAuth credentials in runtime flow:
-
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI`
-
-These are required for Google Calendar connection.
+If the browser requests the trailing-slash version, Nginx / static routing may return `404` before the dynamic route is reached.
 
 ---
 
-## Current frontend onboarding behavior
+## Edit expert page status
 
-The onboarding UI currently includes:
+Edit page shell is now served.
 
-- Telegram-required modal when user tries calendar connection without Telegram auth
-- provider-required modal when user tries connecting calendar without choosing provider
-- Google permission / OAuth error modal handling
-- connected calendar names shown in the card after successful connection
-- “Connect another calendar” block with hard cap of 5 total calendar blocks
-- connected-state button styling for Google calendar editing / reconnect flow
+Current intended direction:
 
-The UI now reflects connected calendars much better than the earlier placeholder state.
+- support the same Telegram identity detection / connect flow as onboarding
+- if opened in Telegram, auto-resolve Telegram user
+- if opened in web context, show Telegram connect flow
+- after Telegram identity is known, load expert data for that slug
+- show editable expert-controlled DB fields in grouped sections
+- keep hidden/internal strategy fields controlled by backend defaults when not appropriate for UI
+
+### Fields planned as editable on edit page
+These are the main expert-facing fields worth editing:
+
+- display name
+- bio
+- hourly rate
+- currency
+- working days
+- work start time
+- work end time
+- allowed session durations
+- minimum notice minutes
+- buffer before minutes
+- buffer after minutes
+- max days ahead
+- active flag
+- available for calls / bookable flag
+- primary calendar selection
+
+### Fields intentionally not for direct editing right now
+These should stay backend-controlled or hidden for now:
+
+- timezone  
+  source of truth should come from calendar
+- calendar conflict mode
+- booking target strategy  
+  backend should keep working with fixed mode/default strategy unless UI is ready
+- tokens / secrets / raw provider metadata
+- review counters / rating snapshots
+- system sync fields
 
 ---
 
-## Current known gap between frontend and backend
+## Frontend structure
 
-Frontend currently shows connected Google calendars based on temporary selected session data and local draft state.
+The frontend was already being refactored away from giant inline page scripts.
 
-Backend registration currently uses that data enough to create expert and connection rows, but does not yet persist the full connected Google record into the `calendar_connections` table.
+Important current frontend structure includes:
 
-So the current system state is:
+### Shared
+- `public/js/shared/app-config.js`
+- `public/js/shared/dom-utils.js`
+- `public/js/shared/telegram-auth.js`
 
-- onboarding UI works
-- Google OAuth flow works
-- calendar selection works
-- expert creation works
-- DB connection rows are created
-- but saved connection records are still not fully provider-backed rows yet
+### Index
+- `public/js/index.js`
 
-This is the main next backend task.
+### Created page
+- `public/js/created.js`
+
+### Expert onboarding
+- `public/js/expert-new/dom.js`
+- `public/js/expert-new/expert-draft.js`
+- `public/js/expert-new/calendar-draft.js`
+- `public/js/expert-new/ui.js`
+- `public/js/expert-new/calendar.js`
+- `public/js/expert-new/modals.js`
+- `public/js/expert-new/register.js`
+- `public/js/expert-new/index.js`
+
+This refactor direction is correct and should continue.
+
+---
+
+## Current development environment
+
+### Dev app
+The dev app runs locally on:
+
+- `127.0.0.1:8080`
+
+### Dev tunnel
+The project uses a reverse SSH tunnel container so the remote dev domain can reach local app port:
+
+- remote target: `root@108.181.246.49`
+- reverse mapping: `18080 -> host.docker.internal:8080`
+
+This is what makes `dev.experthub.bar` work against the local machine during dev.
+
+### Important dev consequence
+If a route works on:
+
+`http://127.0.0.1:8080/...`
+
+but not on:
+
+`https://dev.experthub.bar/...`
+
+then the problem is often outside Rust app code, usually one of:
+
+- Nginx route handling
+- trailing slash mismatch
+- tunnel path forwarding expectation
+- static files catching route before dynamic handler
 
 ---
 

@@ -6,7 +6,7 @@ mod services;
 mod state;
 
 use actix_files::Files;
-use actix_web::{web, App, HttpServer};
+use actix_web::{middleware::NormalizePath, web, App, HttpServer};
 
 use config::AppConfig;
 use db::connect_db;
@@ -30,6 +30,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
+            .wrap(NormalizePath::trim())
             .app_data(state.clone())
             .configure(http::routes::configure)
             .service(Files::new("/", "./public").index_file("index.html"))

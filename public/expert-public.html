@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+    <title>Expert Hub</title>
+
+    <link rel="stylesheet" href="/css/base.css"/>
+    <link rel="stylesheet" href="/css/expert-public.css"/>
+    <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
+    <script defer src="/js/expert-public.js"></script>
+</head>
+<body>
+<div class="app">
+    <section class="hero">
+        <div class="eyebrow">Expert profile</div>
+        <h1 id="expert-name">Loading expert…</h1>
+        <p id="expert-headline">Loading profile…</p>
+    </section>
+
+    <section class="panel expert-summary-card">
+        <div class="expert-summary-top">
+            <div class="expert-avatar-wrap">
+                <img id="expert-avatar" class="expert-avatar hidden" alt="">
+                <div id="expert-avatar-placeholder" class="expert-avatar expert-avatar-placeholder">E</div>
+            </div>
+
+            <div class="expert-summary-copy">
+                <div id="expert-username" class="expert-username">—</div>
+                <div id="expert-timezone" class="expert-meta-line">—</div>
+                <div id="expert-rating" class="expert-meta-line">No reviews yet</div>
+            </div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-box">
+                <div class="summary-label">Rate</div>
+                <div id="expert-rate" class="summary-value">—</div>
+            </div>
+
+            <div class="summary-box">
+                <div class="summary-label">Durations</div>
+                <div id="expert-durations" class="summary-value">—</div>
+            </div>
+        </div>
+
+        <div class="summary-box summary-box-full">
+            <div class="summary-label">About</div>
+            <div id="expert-bio" class="summary-text">—</div>
+        </div>
+    </section>
+
+    <section class="panel slots-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Available slots</h2>
+                <p class="section-note">Only free slots are shown. Busy event details are never exposed.</p>
+            </div>
+        </div>
+
+        <div class="slots-toolbar">
+            <button id="prev-period-btn" class="btn btn-secondary" type="button">Previous 7 days</button>
+            <div id="slots-range-label" class="slots-range-label">—</div>
+            <button id="next-period-btn" class="btn btn-soft-blue" type="button">Next 7 days</button>
+        </div>
+
+        <div id="slots-list" class="slots-list"></div>
+        <div id="slots-empty" class="empty-state hidden">No free slots in this period.</div>
+    </section>
+
+    <section class="panel reviews-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Reviews</h2>
+                <p class="section-note">Visible feedback from previous paid consultations.</p>
+            </div>
+        </div>
+
+        <div id="reviews-list" class="reviews-list"></div>
+        <div id="reviews-empty" class="empty-state hidden">No reviews yet.</div>
+    </section>
+
+    <section class="panel actions-card">
+        <div class="btn-grid">
+            <button id="book-btn" class="btn btn-primary" type="button" disabled>Booking comes next</button>
+            <a class="btn btn-secondary" href="/">Back to marketplace</a>
+        </div>
+    </section>
+
+    <div id="debug-status" class="debug"></div>
+
+    <div class="foot-note">
+        <p>Web3 Marketplace for Telegram Experts</p>
+        <p>Expert Hub © 2026 ·
+            <a href="/privacy.html">Privacy Policy</a> ·
+            <a href="/terms.html">Terms and Conditions</a>
+        </p>
+    </div>
+</div>
+</body>
+</html>

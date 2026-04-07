@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+    <title>Expert Hub</title>
+
+    <link rel="stylesheet" href="/css/base.css"/>
+    <link rel="stylesheet" href="/css/expert-edit.css"/>
+    <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
+    <script defer src="/js/expert-edit/expert-edit.js"></script>
+</head>
+<body>
+<div class="app">
+    <section class="hero">
+        <div class="eyebrow">Expert profile</div>
+        <h1>Continue setting up your profile</h1>
+        <p>Adjust your public expert profile, schedule settings, and call availability.</p>
+    </section>
+
+    <section id="profile-card" class="panel profile-card"></section>
+
+    <section class="panel form-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Public profile</h2>
+                <p class="section-note">These details are visible on your public page.</p>
+            </div>
+        </div>
+
+        <div class="form-grid">
+            <div class="field">
+                <label for="display-name">Display name</label>
+                <input id="display-name" type="text"/>
+            </div>
+
+            <div class="field">
+                <label for="telegram-bio">Your description</label>
+                <textarea id="telegram-bio"></textarea>
+            </div>
+
+            <div class="form-row-2">
+                <div class="field">
+                    <label for="username-readonly">Telegram username</label>
+                    <input id="username-readonly" type="text" readonly/>
+                </div>
+
+                <div class="field">
+                    <label for="public-slug-readonly">Public slug</label>
+                    <input id="public-slug-readonly" type="text" readonly/>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="field">
+                    <label for="timezone-readonly">Timezone</label>
+                    <input id="timezone-readonly" type="text" readonly/>
+                </div>
+
+                <div class="field">
+                    <label for="wallet-readonly">TON wallet</label>
+                    <input id="wallet-readonly" type="text" readonly/>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel form-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Pricing and availability</h2>
+                <p class="section-note">These settings control your public booking page.</p>
+            </div>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-row-2">
+                <div class="field">
+                    <label for="hourly-rate">Hourly rate</label>
+                    <input id="hourly-rate" type="number" min="1" step="0.01"/>
+                </div>
+
+                <div class="field">
+                    <label for="currency">Currency</label>
+                    <input id="currency" type="text"/>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="field">
+                    <label for="work-start">Work start</label>
+                    <input id="work-start" type="time"/>
+                </div>
+
+                <div class="field">
+                    <label for="work-end">Work end</label>
+                    <input id="work-end" type="time"/>
+                </div>
+            </div>
+
+            <div class="field">
+                <label>Working days</label>
+                <div class="check-group" id="working-days-group">
+                    <label class="check-chip"><input type="checkbox" value="mon">Mon</label>
+                    <label class="check-chip"><input type="checkbox" value="tue">Tue</label>
+                    <label class="check-chip"><input type="checkbox" value="wed">Wed</label>
+                    <label class="check-chip"><input type="checkbox" value="thu">Thu</label>
+                    <label class="check-chip"><input type="checkbox" value="fri">Fri</label>
+                    <label class="check-chip"><input type="checkbox" value="sat">Sat</label>
+                    <label class="check-chip"><input type="checkbox" value="sun">Sun</label>
+                </div>
+            </div>
+
+            <div class="field">
+                <label>Allowed session durations</label>
+                <div class="check-group" id="durations-group">
+                    <label class="check-chip"><input type="checkbox" value="30">30 min</label>
+                    <label class="check-chip"><input type="checkbox" value="60">60 min</label>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="field">
+                    <label for="minimum-notice">Minimum notice, minutes</label>
+                    <input id="minimum-notice" type="number" min="0" step="1"/>
+                </div>
+
+                <div class="field">
+                    <label for="max-days-ahead">Max days ahead</label>
+                    <input id="max-days-ahead" type="number" min="1" step="1"/>
+                </div>
+            </div>
+
+            <div class="form-row-2">
+                <div class="field">
+                    <label for="buffer-before">Buffer before, minutes</label>
+                    <input id="buffer-before" type="number" min="0" step="1"/>
+                </div>
+
+                <div class="field">
+                    <label for="buffer-after">Buffer after, minutes</label>
+                    <input id="buffer-after" type="number" min="0" step="1"/>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel form-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Calendar and visibility</h2>
+                <p class="section-note">Choose your main calendar and whether people can book calls with you.</p>
+            </div>
+        </div>
+
+        <div class="form-grid">
+            <div class="field">
+                <label for="primary-calendar">My main calendar</label>
+                <select id="primary-calendar"></select>
+            </div>
+
+            <div class="toggle-list">
+                <label class="toggle-row">
+                    <span>Visible in marketplace</span>
+                    <input id="is-active" type="checkbox"/>
+                </label>
+
+                <label class="toggle-row">
+                    <span>Available for calls</span>
+                    <input id="is-bookable" type="checkbox"/>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel submit-card">
+        <button id="save-profile-btn" class="btn btn-primary" type="button">
+            Save profile changes
+        </button>
+    </section>
+
+    <div id="debug-status" class="debug"></div>
+</div>
+</body>
+</html>

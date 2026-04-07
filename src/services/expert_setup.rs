@@ -9,7 +9,7 @@ use crate::services::{
         upsert_calendar_connection, UpsertCalendarConnectionData,
     },
     experts::{
-        upsert_expert, UpsertExpertData,
+        upsert_expert_from_data, UpsertExpertData,
     },
 };
 use crate::state::AppState;
@@ -110,7 +110,7 @@ pub async fn register_expert_setup(
         .await
         .map_err(|e| format!("failed to start transaction: {e}"))?;
 
-    let expert_saved = upsert_expert(
+    let expert_saved = upsert_expert_from_data(
         &tx,
         UpsertExpertData {
             telegram_id: body.telegram_id,
