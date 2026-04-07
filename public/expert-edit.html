@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/css/base.css"/>
     <link rel="stylesheet" href="/css/expert-edit.css"/>
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <script defer src="/js/expert-edit/expert-edit.js"></script>
 </head>
 <body>
@@ -61,6 +62,16 @@
                     <label for="wallet-readonly">TON wallet</label>
                     <input id="wallet-readonly" type="text" readonly/>
                 </div>
+
+                <div class="field">
+                    <label for="new-wallet-readonly">New connected wallet</label>
+                    <input id="new-wallet-readonly" type="text" readonly placeholder="No new wallet connected">
+                </div>
+            </div>
+
+            <div class="field">
+                <label>Connect another TON wallet</label>
+                <div id="ton-connect"></div>
             </div>
         </div>
     </section>
@@ -152,6 +163,22 @@
                 <p class="section-note">Choose your main calendar and whether people can book calls with you.</p>
             </div>
         </div>
+
+        <section class="panel">
+            <div class="section-head">
+                <div>
+                    <h2 class="section-title">Connected calendars</h2>
+                    <p class="section-note">Delete existing calendars or connect another one below.</p>
+                </div>
+            </div>
+
+            <div id="existing-calendar-list" class="existing-calendar-list"></div>
+            <div class="field">
+                <button id="connect-google-calendar-btn" class="btn btn-secondary" type="button">
+                    Connect another Google calendar
+                </button>
+            </div>
+        </section>
 
         <div class="form-grid">
             <div class="field">

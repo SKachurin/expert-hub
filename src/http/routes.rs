@@ -17,15 +17,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
     cfg.service(expert_setup::register_expert_setup_handler);
 
+    cfg.service(experts::get_expert_edit_handler);
+    cfg.service(experts::update_expert_edit_handler);
+    cfg.service(experts::delete_calendar_connection_handler);
+
     cfg.service(google_calendar::google_start);
     cfg.service(google_calendar::google_callback);
     cfg.service(google_calendar::google_session_get);
     cfg.service(google_calendar::google_session_select);
 
-    cfg.service(experts::upsert_expert_handler);
-    cfg.service(experts::get_edit_expert_handler);
-    cfg.service(experts::update_edit_expert_handler);
-
-    cfg.service(pages::expert_public_page);
     cfg.service(pages::expert_edit_page);
 }

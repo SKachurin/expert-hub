@@ -32,15 +32,57 @@ const bufferAfterEl = document.getElementById('buffer-after');
 
 const workingDaysGroupEl = document.getElementById('working-days-group');
 const durationsGroupEl = document.getElementById('durations-group');
-
 const primaryCalendarEl = document.getElementById('primary-calendar');
+
 const isActiveEl = document.getElementById('is-active');
 const isBookableEl = document.getElementById('is-bookable');
+
 const saveProfileBtnEl = document.getElementById('save-profile-btn');
+const newWalletReadonlyEl = document.getElementById('new-wallet-readonly');
+const existingCalendarListEl = document.getElementById('existing-calendar-list');
+const connectGoogleCalendarBtnEl = document.getElementById('connect-google-calendar-btn');
 
 let currentTelegramUser = null;
 let currentExpert = null;
+let pendingWallet = null;
+let tonUi = null;
+let existingCalendarConnections = [];
+let pendingGoogleSessionIds = [];
 
+
+function getSavedWalletAddress() {
+    return currentExpert?.ton_wallet_address || '';
+}
+
+function getPendingWalletAddress() {
+    return pendingWallet?.account?.address || '';
+}
+
+function getWalletAddressForSave() {
+    return getPendingWalletAddress() || getSavedWalletAddress();
+}
+function refreshWalletUi() {
+    walletReadonlyEl.value = getSavedWalletAddress();
+    if (newWalletReadonlyEl) {
+        newWalletReadonlyEl.value = getPendingWalletAddress();
+    }
+}
+function initTonConnectForEdit() {
+    if (!window.TON_CONNECT_UI) {
+        console.error('TON_CONNECT_UI is missing');
+        return;
+    }
+
+    tonUi = new TON_CONNECT_UI.TonConnectUI({
+        manifestUrl: `${PUBLIC_ORIGIN}/tonconnect-manifest.json`,
+        buttonRootId: 'ton-connect'
+    });
+
+    tonUi.onStatusChange((wallet) => {
+        pendingWallet = wallet || null;
+        refreshWalletUi();
+    });
+}
 function setDebugStatus(text) {
     debugStatusEl.textContent = text || '';
 }
@@ -227,26 +269,6 @@ function bindChipGroup(groupEl) {
     });
 }
 
-function populateCalendarOptions(items, selectedId) {
-    primaryCalendarEl.innerHTML = '';
-
-    if (!Array.isArray(items) || !items.length) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = 'No connected calendars';
-        primaryCalendarEl.appendChild(option);
-        return;
-    }
-
-    items.forEach((item) => {
-        const option = document.createElement('option');
-        option.value = String(item.id);
-        option.textContent = item.connection_label;
-        option.selected = Number(selectedId) === Number(item.id);
-        primaryCalendarEl.appendChild(option);
-    });
-}
-
 function populateForm(data) {
     currentExpert = data;
 
@@ -255,8 +277,6 @@ function populateForm(data) {
     usernameReadonlyEl.value = data.username ? `@${data.username}` : '';
     publicSlugReadonlyEl.value = data.public_slug || '';
     timezoneReadonlyEl.value = data.timezone || '';
-    walletReadonlyEl.value = data.ton_wallet_address || '';
-
     hourlyRateEl.value = data.hourly_rate || '';
     currencyEl.value = data.currency || '';
     workStartEl.value = data.work_start_time || '';
@@ -272,7 +292,16 @@ function populateForm(data) {
     isActiveEl.checked = !!data.is_active;
     isBookableEl.checked = !!data.is_bookable;
 
-    populateCalendarOptions(data.calendar_connections || [], data.primary_calendar_connection_id);
+    existingCalendarConnections = Array.isArray(data.calendar_connections)
+        ? data.calendar_connections
+        : [];
+
+    refreshWalletUi();
+    renderExistingCalendarConnections();
+    populatePrimaryCalendarOptions(
+        data.calendar_connections || [],
+        data.primary_calendar_connection_id
+    );
 
     if (currentTelegramUser?.id && Number(currentTelegramUser.id) !== Number(data.telegram_id)) {
         setDebugStatus('This Telegram account does not own this expert profile.');
@@ -288,6 +317,7 @@ function buildPayload() {
         telegram_id: currentTelegramUser.id,
         display_name: displayNameEl.value.trim(),
         telegram_bio: telegramBioEl.value.trim() || null,
+        ton_wallet_address: getWalletAddressForSave(),
         hourly_rate: hourlyRateEl.value.trim(),
         currency: currencyEl.value.trim(),
         working_days: getChipGroupValues(workingDaysGroupEl, false),
@@ -300,7 +330,10 @@ function buildPayload() {
         max_days_ahead: Number(maxDaysAheadEl.value || 30),
         is_active: isActiveEl.checked,
         is_bookable: isBookableEl.checked,
-        primary_calendar_connection_id: primaryCalendarEl.value ? Number(primaryCalendarEl.value) : null
+        primary_calendar_connection_id: primaryCalendarEl && primaryCalendarEl.value
+            ? Number(primaryCalendarEl.value)
+            : null,
+        attach_google_session_ids: pendingGoogleSessionIds,
     };
 }
 
@@ -321,6 +354,7 @@ async function loadExpertData() {
         }
 
         const data = await response.json();
+        pendingGoogleSessionIds = [];
         populateForm(data);
         setDebugStatus('');
     } catch (error) {
@@ -367,6 +401,121 @@ async function saveExpertData() {
             saveProfileBtnEl.disabled = false;
         }
     }
+}
+
+function renderExistingCalendarConnections() {
+    if (!existingCalendarListEl) return;
+
+    existingCalendarListEl.innerHTML = '';
+
+    if (!Array.isArray(existingCalendarConnections) || !existingCalendarConnections.length) {
+        existingCalendarListEl.innerHTML = '<div class="section-note">No connected calendars yet.</div>';
+        return;
+    }
+
+    existingCalendarConnections.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'existing-calendar-card';
+        card.innerHTML = `
+            <button
+                type="button"
+                class="existing-calendar-delete"
+                data-connection-id="${item.id}"
+                aria-label="Delete calendar"
+            >×</button>
+
+            <div><strong>${escapeHtml(item.connection_label || item.provider || 'Calendar')}</strong></div>
+            ${item.selected_calendar_name ? `<div>${escapeHtml(item.selected_calendar_name)}</div>` : ''}
+            ${item.selected_calendar_timezone ? `<div>${escapeHtml(item.selected_calendar_timezone)}</div>` : ''}
+        `;
+        existingCalendarListEl.appendChild(card);
+    });
+
+    existingCalendarListEl.querySelectorAll('.existing-calendar-delete').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const slug = getSlugFromPath();
+            const connectionId = btn.dataset.connectionId;
+
+            try {
+                btn.disabled = true;
+
+                const response = await fetch(
+                    `/api/experts/${encodeURIComponent(slug)}/calendar-connections/${encodeURIComponent(connectionId)}`,
+                    { method: 'DELETE' }
+                );
+
+                if (!response.ok) {
+                    const text = await response.text().catch(() => '');
+                    throw new Error(`${response.status} ${text}`);
+                }
+
+                existingCalendarConnections = existingCalendarConnections.filter(
+                    (item) => String(item.id) !== String(connectionId)
+                );
+
+                renderExistingCalendarConnections();
+                populatePrimaryCalendarOptions(existingCalendarConnections, null);
+                setDebugStatus('Calendar deleted.');
+            } catch (error) {
+                console.error(error);
+                btn.disabled = false;
+                setDebugStatus(`Delete failed: ${error.message}`);
+            }
+        });
+    });
+}
+
+function connectAnotherGoogleCalendar() {
+    if (!currentTelegramUser?.id) {
+        setDebugStatus('Connect Telegram first.');
+        return;
+    }
+
+    window.location.href =
+        `/oauth/google/start?telegram_id=${encodeURIComponent(currentTelegramUser.id)}&return_to=expert_edit&slug=${encodeURIComponent(getSlugFromPath())}`;
+}
+
+function consumeGoogleSessionFromUrl() {
+    const url = new URL(window.location.href);
+    const sessionId = url.searchParams.get('google_session');
+
+    if (!sessionId) {
+        return null;
+    }
+
+    url.searchParams.delete('google_session');
+    window.history.replaceState({}, '', url.toString());
+
+    return sessionId;
+}
+
+function addPendingGoogleSession(sessionId) {
+    if (!sessionId) return;
+    if (!pendingGoogleSessionIds.includes(sessionId)) {
+        pendingGoogleSessionIds.push(sessionId);
+    }
+}
+
+function populatePrimaryCalendarOptions(items, selectedId) {
+    if (!primaryCalendarEl) return;
+
+    primaryCalendarEl.innerHTML = '';
+
+    if (!Array.isArray(items) || !items.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No connected calendars';
+        primaryCalendarEl.appendChild(option);
+        return;
+    }
+
+    items.forEach((item) => {
+        const option = document.createElement('option');
+        option.value = String(item.id);
+        option.textContent = item.connection_label || item.provider || `Calendar ${item.id}`;
+        option.selected = Number(selectedId) === Number(item.id);
+        primaryCalendarEl.appendChild(option);
+    });
 }
 
 window.addEventListener('message', async (e) => {
@@ -418,6 +567,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderProfileCard(currentTelegramUser);
 
     await loadExpertData();
+    initTonConnectForEdit();
+
+    const returnedGoogleSessionId = consumeGoogleSessionFromUrl();
+    if (returnedGoogleSessionId) {
+        addPendingGoogleSession(returnedGoogleSessionId);
+        setDebugStatus('Google calendar connected. Save profile to attach it.');
+    }
+    if (connectGoogleCalendarBtnEl) {
+        connectGoogleCalendarBtnEl.addEventListener('click', connectAnotherGoogleCalendar);
+    }
 
     saveProfileBtnEl.addEventListener('click', saveExpertData);
 });

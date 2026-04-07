@@ -9,6 +9,8 @@ use serde_json::Value;
 
 use crate::entities::experts;
 use crate::entities::calendar_connections;
+use crate::services::calendar_connections::CalendarConnectionView;
+use crate::state::GoogleOAuthSession;
 
 #[derive(Debug, Deserialize)]
 pub struct UpsertExpertRequest {
@@ -119,6 +121,9 @@ pub struct UpdateExpertProfileRequest {
     pub is_active: bool,
     pub is_bookable: bool,
     pub primary_calendar_connection_id: Option<i64>,
+    pub ton_wallet_address: Option<String>,
+    #[serde(default)]
+    pub attach_google_session_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -367,6 +372,11 @@ where
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty()),
     );
+
+    if let Some(wallet) = data.ton_wallet_address.as_ref().map(|v| v.trim()).filter(|v| !v.is_empty()) {
+        active.ton_wallet_address = Set(wallet.to_string());
+    }
+
     active.hourly_rate = Set(data.hourly_rate);
     active.currency = Set(data.currency.trim().to_uppercase());
     active.working_days = Set(data.working_days.clone());

@@ -10,11 +10,6 @@ use crate::services::google_calendar::{
 use crate::state::{AppState, GoogleOAuthSession};
 
 #[derive(Deserialize)]
-pub struct GoogleStartQuery {
-    pub telegram_id: i64,
-}
-
-#[derive(Deserialize)]
 pub struct GoogleCallbackQuery {
     pub code: Option<String>,
     pub state: Option<String>,
@@ -26,12 +21,31 @@ pub struct GoogleSelectRequest {
     pub selected_calendar_ids: Vec<String>,
 }
 
+
+#[derive(Deserialize)]
+pub struct GoogleStartQuery {
+    pub telegram_id: i64,
+    #[serde(default)]
+    pub return_to: Option<String>,
+    #[serde(default)]
+    pub slug: Option<String>,
+}
+
 #[derive(Serialize)]
 pub struct GoogleSessionView {
     pub session_id: String,
     pub account_email: Option<String>,
     pub calendars: Vec<crate::state::GoogleCalendarCandidate>,
     pub selected_calendar_ids: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize, Default)]
+struct GoogleOAuthState {
+    telegram_id: i64,
+    #[serde(default)]
+    return_to: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
 }
 
 #[get("/oauth/google/start")]
@@ -43,7 +57,12 @@ pub async fn google_start(
         return HttpResponse::BadRequest().body("telegram_id is required");
     }
 
-    let state_value = format!("telegram_id:{}", query.telegram_id);
+    let state_value = serde_json::to_string(&GoogleOAuthState {
+        telegram_id: query.telegram_id,
+        return_to: query.return_to.clone(),
+        slug: query.slug.clone(),
+    })
+    .unwrap_or_else(|_| "{\"telegram_id\":0}".to_string());
     let url = build_google_oauth_url(&state.config, &state_value);
 
     HttpResponse::Found()
@@ -56,9 +75,12 @@ pub async fn google_callback(
     state: web::Data<AppState>,
     query: web::Query<GoogleCallbackQuery>,
 ) -> impl Responder {
+    let oauth_state = parse_google_state(query.state.as_ref());
+    let redirect_base = build_google_return_url(&oauth_state);
     if let Some(err) = &query.error {
         let redirect_url = format!(
-            "/expert-new.html?google_error=oauth_error&google_error_message={}",
+            "{}?google_error=oauth_error&google_error_message={}",
+            redirect_base,
             urlencoding::encode(err),
         );
 
@@ -76,7 +98,8 @@ pub async fn google_callback(
         Ok(v) => v,
         Err(e) => {
             let redirect_url = format!(
-                "/expert-new.html?google_error=token_exchange_failed&google_error_message={}",
+                "{}?google_error=token_exchange_failed&google_error_message={}",
+                redirect_base,
                 urlencoding::encode(&e),
             );
 
@@ -90,7 +113,8 @@ pub async fn google_callback(
 
     if !has_google_calendar_scope(Some(&granted_scopes)) {
         let redirect_url = format!(
-            "/expert-new.html?google_error=calendar_scope_denied&google_scope={}",
+            "{}?google_error=calendar_scope_denied&google_scope={}",
+            redirect_base,
             urlencoding::encode(&granted_scopes),
         );
 
@@ -103,7 +127,8 @@ pub async fn google_callback(
         Ok(v) => v,
         Err(e) => {
             let redirect_url = format!(
-                "/expert-new.html?google_error=userinfo_failed&google_error_message={}",
+                "{}?google_error=userinfo_failed&google_error_message={}",
+                redirect_base,
                 urlencoding::encode(&e),
             );
 
@@ -117,7 +142,8 @@ pub async fn google_callback(
         Ok(v) => v,
         Err(e) => {
             let redirect_url = format!(
-                "/expert-new.html?google_error=calendar_list_failed&google_error_message={}",
+                "{}?google_error=calendar_list_failed&google_error_message={}",
+                redirect_base,
                 urlencoding::encode(&e),
             );
 
@@ -150,7 +176,8 @@ pub async fn google_callback(
     }
 
     let redirect_url = format!(
-        "/expert-new.html?google_session={}",
+        "{}?google_session={}",
+        redirect_base,
         urlencoding::encode(&session_id)
     );
 
@@ -239,4 +266,22 @@ pub async fn google_session_select(
     HttpResponse::Ok().json(serde_json::json!({
         "status": "ok"
     }))
+}
+
+fn parse_google_state(raw: Option<&String>) -> GoogleOAuthState {
+    raw.and_then(|v| serde_json::from_str::<GoogleOAuthState>(v).ok())
+        .unwrap_or_default()
+}
+
+fn build_google_return_url(state: &GoogleOAuthState) -> String {
+    match state.return_to.as_deref() {
+        Some("expert_edit") => {
+            if let Some(slug) = state.slug.as_deref() {
+                format!("/e/{}/edit", urlencoding::encode(slug))
+            } else {
+                "/expert-new.html".to_string()
+            }
+        }
+        _ => "/expert-new.html".to_string(),
+    }
 }
