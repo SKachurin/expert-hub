@@ -190,3 +190,105 @@
         order: -1;
     }
 }
+
+.duration-picker-wrap {
+    margin-top: 14px;
+}
+
+.duration-picker-label {
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+.duration-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.duration-chip:active {
+    transform: translateY(1px);
+}
+
+.duration-chip.active {
+    background: rgba(86, 168, 245, 0.14);
+    border-color: rgba(86, 168, 245, 0.28);
+    color: #dff1ff;
+}
+
+.duration-picker-card {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.duration-picker-card__title {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+}
+
+.duration-picker-card__text {
+    margin-top: 6px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+.duration-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.expert-summary-card {
+    position: relative;
+}
+
+.edit-profile-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text);
+    text-decoration: none;
+    z-index: 2;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.edit-profile-btn:hover {
+    background: rgba(86, 168, 245, 0.14);
+    border-color: rgba(86, 168, 245, 0.28);
+    color: #dff1ff;
+}
+
+.edit-profile-btn:active {
+    transform: translateY(1px);
+}
+
+.edit-profile-btn svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+}

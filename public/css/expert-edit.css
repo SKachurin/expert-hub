@@ -52,7 +52,6 @@
     justify-content: center;
     gap: 20px;
     padding: 22px 24px;
-    margin: 8px 0 0;
     border: 1px solid rgba(110, 160, 255, 0.28);
     border-radius: 28px;
     background: rgba(90, 140, 220, 0.16);
@@ -84,7 +83,7 @@
 }
 
 .add-calendar-card__text {
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 800;
     line-height: 1.1;
 }

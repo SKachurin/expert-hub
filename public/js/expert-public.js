@@ -1,3 +1,8 @@
+import {
+    initTelegramWebApp,
+    resolveTelegramUser
+} from '/js/shared/telegram-auth.js';
+
 const debugStatusEl = document.getElementById('debug-status');
 
 const expertNameEl = document.getElementById('expert-name');
@@ -20,8 +25,14 @@ const reviewsEmptyEl = document.getElementById('reviews-empty');
 const prevPeriodBtnEl = document.getElementById('prev-period-btn');
 const nextPeriodBtnEl = document.getElementById('next-period-btn');
 
+const durationPickerWrapEl = document.getElementById('duration-picker-wrap');
+const durationPickerEl = document.getElementById('duration-picker');
+const editProfileBtnEl = document.getElementById('edit-profile-btn');
+
 let currentOffsetDays = 0;
 let currentSlug = null;
+let currentDurationMinutes = null;
+let expertAllowedDurations = [];
 
 function setDebugStatus(text) {
     debugStatusEl.textContent = text || '';
@@ -74,6 +85,7 @@ function renderExpert(data) {
         expertAvatarEl.classList.add('hidden');
         expertAvatarPlaceholderEl.classList.remove('hidden');
     }
+    updateEditProfileButton(data);
 }
 
 function renderSlots(payload) {
@@ -166,26 +178,144 @@ async function loadPublicPage() {
     try {
         setDebugStatus('Loading public page…');
 
-        const response = await fetch(`/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}`);
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            throw new Error(`${response.status} ${text}`);
-        }
+        const response = await fetch(
+            `/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}`
+        );
 
         const payload = await response.json();
 
+        if (!response.ok) {
+            throw new Error(payload.message || 'Failed to load public page.');
+        }
+
         renderExpert(payload.expert);
-        renderSlots(payload.availability);
-        renderReviews(payload.reviews);
+        renderReviews(payload.reviews || []);
+
+        expertAllowedDurations = normalizeDurations(payload.expert?.allowed_session_durations);
+        currentDurationMinutes = expertAllowedDurations.length ? expertAllowedDurations[0] : null;
+
+        renderDurationPicker(expertAllowedDurations);
+
+        if (currentDurationMinutes) {
+            renderSlots(payload.availability);
+        } else {
+            slotsListEl.innerHTML = '';
+            slotsRangeLabelEl.textContent = '—';
+            slotsEmptyEl.classList.remove('hidden');
+        }
 
         setDebugStatus('');
     } catch (error) {
         console.error(error);
-        setDebugStatus(`Failed to load expert page: ${error.message}`);
+        setDebugStatus(error.message || 'Failed to load public page.');
     }
 }
 
+function normalizeDurations(durations) {
+    if (!Array.isArray(durations)) {
+        return [];
+    }
+
+    return durations
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+        .sort((a, b) => a - b);
+}
+
+function renderDurationPicker(durations) {
+    durationPickerEl.innerHTML = '';
+
+    if (!Array.isArray(durations) || !durations.length) {
+        durationPickerWrapEl.classList.add('hidden');
+        return;
+    }
+
+    durationPickerWrapEl.classList.remove('hidden');
+
+    durations.forEach((duration) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'duration-chip';
+        chip.textContent = `${duration} min`;
+
+        if (duration === currentDurationMinutes) {
+            chip.classList.add('active');
+        }
+
+        chip.addEventListener('click', async () => {
+            if (duration === currentDurationMinutes) {
+                return;
+            }
+
+            currentDurationMinutes = duration;
+            renderDurationPicker(expertAllowedDurations);
+            await loadAvailabilityOnly();
+        });
+
+        durationPickerEl.appendChild(chip);
+    });
+}
+
+async function loadAvailabilityOnly() {
+    if (!currentSlug || !currentDurationMinutes) {
+        return;
+    }
+
+    try {
+        setDebugStatus('Loading slots…');
+
+        const response = await fetch(
+            `/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}&duration_minutes=${currentDurationMinutes}`
+        );
+
+        const payload = await response.json();
+
+        if (!response.ok) {
+            throw new Error(payload.message || 'Failed to load availability.');
+        }
+
+        renderSlots(payload.availability);
+        renderReviews(payload.reviews || []);
+        setDebugStatus('');
+    } catch (error) {
+        console.error(error);
+        slotsListEl.innerHTML = '';
+        slotsEmptyEl.classList.remove('hidden');
+        setDebugStatus(error.message || 'Failed to load slots.');
+    }
+}
+
+function updateEditProfileButton(data) {
+    if (!editProfileBtnEl) {
+        return;
+    }
+
+    editProfileBtnEl.href = `/e/${encodeURIComponent(data.public_slug)}/edit`;
+
+    const telegramUser = resolveTelegramUser();
+
+    console.log('edit button check', {
+        telegramUser,
+        expertTelegramId: data.telegram_id,
+        slug: data.public_slug
+    });
+
+    const isOwner =
+        telegramUser &&
+        Number(telegramUser.id) > 0 &&
+        Number(data.telegram_id) === Number(telegramUser.id);
+
+    if (isOwner) {
+        editProfileBtnEl.classList.remove('hidden');
+    } else {
+        editProfileBtnEl.classList.add('hidden');
+    }
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
+    initTelegramWebApp();
+
     currentSlug = getSlugFromPath();
 
     prevPeriodBtnEl.addEventListener('click', () => {

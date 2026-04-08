@@ -3,6 +3,7 @@ use serde::Deserialize;
 use chrono::{Duration, Utc};
 use crate::{
     services::{
+        availability::get_public_availability,
         calendar_connections::{
             delete_calendar_connection_for_expert,
             upsert_calendar_connection,
@@ -24,6 +25,7 @@ use crate::{
 pub struct PublicExpertQuery {
     #[serde(default)]
     pub offset_days: i64,
+    pub duration_minutes: Option<i64>,
 }
 
 #[post("/experts/upsert")]
@@ -44,18 +46,40 @@ pub async fn upsert_expert_handler(
 pub async fn get_public_expert_handler(
     state: web::Data<AppState>,
     slug: web::Path<String>,
-    _query: web::Query<PublicExpertQuery>,
+    query: web::Query<PublicExpertQuery>,
 ) -> HttpResponse {
     match get_public_expert_by_slug(&state.db, slug.into_inner()).await {
-        Ok(expert) => HttpResponse::Ok().json(serde_json::json!({
-            "expert": expert,
-            "availability": {
-                "period_start": "",
-                "period_end": "",
-                "days": []
-            },
-            "reviews": []
-        })),
+        Ok(expert) => {
+            match get_public_availability(
+                &state.db,
+                &state.config,
+                &expert,
+                query.offset_days,
+                query.duration_minutes,
+            ).await {
+                Ok(availability) => HttpResponse::Ok().json(serde_json::json!({
+                    "expert": expert,
+                    "availability": availability,
+                    "reviews": []
+                })),
+                Err(err) => {
+                    tracing::warn!("availability build failed: {}", err);
+
+                    HttpResponse::Ok().json(serde_json::json!({
+                        "expert": expert,
+                        "availability": {
+                            "period_start": "",
+                            "period_end": "",
+                            "days": []
+                        },
+                        "reviews": [],
+                        "availability_debug": {
+                            "error": err
+                        }
+                    }))
+                }
+            }
+        }
         Err(err) if err == "expert not found" => {
             HttpResponse::NotFound().json(serde_json::json!({
                 "status": "error",

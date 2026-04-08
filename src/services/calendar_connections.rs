@@ -178,3 +178,32 @@ where
 
     Ok(())
 }
+
+pub async fn update_google_connection_tokens<C>(
+    db: &C,
+    connection_id: i64,
+    access_token: String,
+    token_expires_at: Option<DateTime<Utc>>,
+) -> Result<(), String>
+where
+    C: ConnectionTrait,
+{
+    let model = calendar_connections::Entity::find_by_id(connection_id)
+        .one(db)
+        .await
+        .map_err(|e| format!("failed to load calendar connection: {e}"))?
+        .ok_or_else(|| "calendar connection not found".to_string())?;
+
+    let mut active: calendar_connections::ActiveModel = model.into();
+
+    active.access_token = Set(Some(access_token));
+    active.token_expires_at = Set(token_expires_at.map(|v| v.fixed_offset()));
+    active.updated_at = Set(Utc::now().fixed_offset());
+
+    active
+        .update(db)
+        .await
+        .map_err(|e| format!("failed to update calendar connection tokens: {e}"))?;
+
+    Ok(())
+}

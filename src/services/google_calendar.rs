@@ -1,14 +1,69 @@
-use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Duration, Utc};
+use std::collections::HashMap;
+use reqwest::{Client, StatusCode};
 
 use crate::config::AppConfig;
 use crate::state::GoogleCalendarCandidate;
 
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_FREEBUSY_URL: &str = "https://www.googleapis.com/calendar/v3/freeBusy";
 const GOOGLE_OAUTH_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_LIST_URL: &str = "https://www.googleapis.com/calendar/v3/users/me/calendarList";
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 const GOOGLE_SCOPE: &str = "openid email https://www.googleapis.com/auth/calendar.readonly";
+
+#[derive(Debug, Deserialize)]
+pub struct GoogleRefreshTokenResponse {
+    pub access_token: String,
+    #[serde(default)]
+    pub expires_in: Option<i64>,
+    #[serde(default)]
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub token_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GoogleBusyInterval {
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize)]
+struct GoogleFreeBusyRequest<'a> {
+    #[serde(rename = "timeMin")]
+    time_min: String,
+    #[serde(rename = "timeMax")]
+    time_max: String,
+    #[serde(rename = "timeZone")]
+    time_zone: &'a str,
+    items: Vec<GoogleFreeBusyItem<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct GoogleFreeBusyItem<'a> {
+    id: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleFreeBusyResponse {
+    calendars: HashMap<String, GoogleFreeBusyCalendar>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleFreeBusyCalendar {
+    #[serde(default)]
+    busy: Vec<GoogleFreeBusyBusyItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleFreeBusyBusyItem {
+    start: String,
+    end: String,
+}
+
 
 pub fn build_google_oauth_url(config: &AppConfig, state: &str) -> String {
     format!(
@@ -157,4 +212,168 @@ pub async fn fetch_google_calendars(access_token: &str) -> Result<Vec<GoogleCale
             primary: item.primary.unwrap_or(false),
         })
         .collect())
+}
+
+pub async fn fetch_google_free_busy(
+    access_token: &str,
+    calendar_ids: &[String],
+    time_min: DateTime<Utc>,
+    time_max: DateTime<Utc>,
+    time_zone: &str,
+) -> Result<Vec<GoogleBusyInterval>, String> {
+    if calendar_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = Client::new();
+
+    let body = GoogleFreeBusyRequest {
+        time_min: time_min.to_rfc3339(),
+        time_max: time_max.to_rfc3339(),
+        time_zone,
+        items: calendar_ids
+            .iter()
+            .map(|id| GoogleFreeBusyItem { id: id.as_str() })
+            .collect(),
+    };
+
+    let resp = client
+        .post(GOOGLE_FREEBUSY_URL)
+        .bearer_auth(access_token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("google freeBusy request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("google freeBusy failed: {}", text));
+    }
+
+    let parsed = resp
+        .json::<GoogleFreeBusyResponse>()
+        .await
+        .map_err(|e| format!("failed to parse google freeBusy response: {e}"))?;
+
+    let mut intervals = Vec::new();
+
+    for (_, calendar) in parsed.calendars {
+        for busy in calendar.busy {
+            let start = DateTime::parse_from_rfc3339(&busy.start)
+                .map_err(|e| format!("invalid google busy start: {e}"))?
+                .with_timezone(&Utc);
+
+            let end = DateTime::parse_from_rfc3339(&busy.end)
+                .map_err(|e| format!("invalid google busy end: {e}"))?
+                .with_timezone(&Utc);
+
+            if end > start {
+                intervals.push(GoogleBusyInterval { start, end });
+            }
+        }
+    }
+
+    Ok(intervals)
+}
+
+pub async fn refresh_google_access_token(
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> Result<(String, Option<DateTime<Utc>>), String> {
+    let client = Client::new();
+
+    let response = client
+        .post(GOOGLE_TOKEN_URL)
+        .form(&[
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("refresh_token", refresh_token),
+            ("grant_type", "refresh_token"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("google token refresh request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("google token refresh failed: {text}"));
+    }
+
+    let parsed = response
+        .json::<GoogleRefreshTokenResponse>()
+        .await
+        .map_err(|e| format!("failed to parse google refresh response: {e}"))?;
+
+    let expires_at = parsed
+        .expires_in
+        .map(|seconds| Utc::now() + Duration::seconds(seconds.saturating_sub(60)));
+
+    Ok((parsed.access_token, expires_at))
+}
+
+pub async fn fetch_google_free_busy_raw(
+    access_token: &str,
+    calendar_ids: &[String],
+    time_min: DateTime<Utc>,
+    time_max: DateTime<Utc>,
+    time_zone: &str,
+) -> Result<reqwest::Response, String> {
+    if calendar_ids.is_empty() {
+        return Err("calendar_ids is empty".to_string());
+    }
+
+    let client = Client::new();
+
+    let body = GoogleFreeBusyRequest {
+        time_min: time_min.to_rfc3339(),
+        time_max: time_max.to_rfc3339(),
+        time_zone,
+        items: calendar_ids
+            .iter()
+            .map(|id| GoogleFreeBusyItem { id: id.as_str() })
+            .collect(),
+    };
+
+    client
+        .post(GOOGLE_FREEBUSY_URL)
+        .bearer_auth(access_token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("google freeBusy request failed: {e}"))
+}
+
+pub async fn parse_google_free_busy_response(
+    resp: reqwest::Response,
+) -> Result<Vec<GoogleBusyInterval>, String> {
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("google freeBusy failed: {text}"));
+    }
+
+    let parsed = resp
+        .json::<GoogleFreeBusyResponse>()
+        .await
+        .map_err(|e| format!("failed to parse google freeBusy response: {e}"))?;
+
+    let mut intervals = Vec::new();
+
+    for (_, calendar) in parsed.calendars {
+        for busy in calendar.busy {
+            let start = DateTime::parse_from_rfc3339(&busy.start)
+                .map_err(|e| format!("invalid google busy start: {e}"))?
+                .with_timezone(&Utc);
+
+            let end = DateTime::parse_from_rfc3339(&busy.end)
+                .map_err(|e| format!("invalid google busy end: {e}"))?
+                .with_timezone(&Utc);
+
+            if end > start {
+                intervals.push(GoogleBusyInterval { start, end });
+            }
+        }
+    }
+
+    Ok(intervals)
 }
