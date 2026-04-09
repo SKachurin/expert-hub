@@ -1,4 +1,4 @@
-/* /public/js/created.js */
+import { BOT } from '/js/shared/app-config.js';
 
 const debugStatusEl = document.getElementById('debug-status');
 const publicUrlEl = document.getElementById('public-url');
@@ -26,7 +26,7 @@ async function copyText(value, successText) {
     }
 }
 function buildTelegramMiniAppPublicLink(slug) {
-    return `https://t.me/expert_hub_bot?startapp=${encodeURIComponent(slug)}`;
+    return `https://t.me/${BOT}?startapp=${encodeURIComponent(slug)}`;
 }
 
 function initCreatedPage() {

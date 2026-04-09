@@ -134,7 +134,8 @@ pub async fn register_expert_setup(
             work_start_time: body.work_start_time.clone(),
             work_end_time: body.work_end_time.clone(),
             allowed_session_durations: body.allowed_session_durations.clone(),
-        },
+            is_bookable: true,
+        }
     )
     .await
     .map_err(|e| format!("failed to save expert: {e}"))?;

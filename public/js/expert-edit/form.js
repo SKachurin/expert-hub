@@ -6,6 +6,7 @@ import {
     renderExistingCalendarConnections,
     populatePrimaryCalendarOptions
 } from './calendars.js';
+import { BOT } from '/js/shared/app-config.js';
 
 export function setDebugStatus(text) {
     els.debugStatus.textContent = text || '';
@@ -17,7 +18,9 @@ export function populateForm(data) {
     els.displayName.value = data.display_name || '';
     els.telegramBio.value = data.telegram_bio || '';
     els.usernameReadonly.value = data.username ? `@${data.username}` : '';
-    els.publicSlugReadonly.value = data.public_slug || '';
+    els.publicLinkReadonly.value = data.public_slug
+        ? `https://t.me/${BOT}?startapp=${encodeURIComponent(data.public_slug)}`
+        : '';
     els.timezoneReadonly.value = data.timezone || '';
     els.hourlyRate.value = data.hourly_rate || '';
     els.currency.value = data.currency || '';
@@ -52,6 +55,24 @@ export function populateForm(data) {
         setDebugStatus('');
         els.saveProfileBtn.disabled = !state.currentTelegramUser?.id;
     }
+}
+
+if (els.copyPublicLinkBtn) {
+    els.copyPublicLinkBtn.onclick = async () => {
+        const value = els.publicLinkReadonly?.value || '';
+        if (!value) {
+            setDebugStatus('Public link is empty.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(value);
+            setDebugStatus('Public link copied.');
+        } catch (error) {
+            console.error(error);
+            setDebugStatus('Copy failed.');
+        }
+    };
 }
 
 export function buildPayload() {

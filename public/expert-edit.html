@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/css/expert-edit.css"/>
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
-    <script type="module" src="/js/expert-edit/index.js"></script>
+    <script type="module" src="/js/expert-edit/index.js?v=20260409-1"></script>
 </head>
 <body>
 <div class="app">
@@ -47,8 +47,28 @@
                 </div>
 
                 <div class="field">
-                    <label for="public-slug-readonly">Public slug</label>
-                    <input id="public-slug-readonly" type="text" readonly/>
+                    <label for="public-link-readonly">Public link</label>
+                    <div class="input-with-action">
+                        <input id="public-link-readonly" type="text" readonly/>
+                        <button
+                                id="copy-public-link-btn"
+                                class="input-action-btn"
+                                type="button"
+                                aria-label="Copy public link"
+                                title="Copy public link"
+                        >
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                        d="M9 9a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2V9zm-5 6V6a2 2 0 0 1 2-2h7"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
 

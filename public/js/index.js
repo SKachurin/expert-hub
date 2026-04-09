@@ -2,6 +2,7 @@ import {
     initTelegramWebApp,
     resolveTelegramUser
 } from '/js/shared/telegram-auth.js';
+import { BOT } from '/js/shared/app-config.js';
 
 const popularExpertsListEl = document.getElementById('popular-experts-list');
 const popularExpertsEmptyEl = document.getElementById('popular-experts-empty');
@@ -95,7 +96,7 @@ function renderPopularExperts(items) {
     items.forEach((expert) => {
         const card = document.createElement('a');
         card.className = 'popular-expert-tile';
-        card.href = `https://t.me/expert_hub_bot?startapp=${encodeURIComponent(expert.public_slug)}`;
+        card.href = `https://t.me/${BOT}?startapp=${encodeURIComponent(expert.public_slug)}`;
 
         const avatarWrap = document.createElement('div');
         avatarWrap.className = 'popular-expert-avatar-wrap';

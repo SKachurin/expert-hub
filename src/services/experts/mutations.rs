@@ -34,6 +34,7 @@ impl From<UpsertExpertRequest> for UpsertExpertData {
             work_start_time: value.work_start_time,
             work_end_time: value.work_end_time,
             allowed_session_durations: value.allowed_session_durations,
+            is_bookable: false,
         }
     }
 }
@@ -93,6 +94,7 @@ where
             active.work_start_time = Set(work_start_time);
             active.work_end_time = Set(work_end_time);
             active.allowed_session_durations = Set(data.allowed_session_durations.clone());
+            active.is_bookable = Set(data.is_bookable);
             active.updated_at = Set(now);
 
             active
@@ -114,7 +116,7 @@ where
                 ton_wallet_address: Set(data.ton_wallet_address.clone()),
                 photo_url: Set(data.photo_url.clone()),
                 hourly_rate: Set(data.hourly_rate),
-                currency: Set(data.currency.clone()),
+                currency: Set(data.currency.trim().to_uppercase()),
                 expert_rating: Set(Decimal::new(500, 2)),
                 reviews_count: Set(0),
                 timezone: Set(data.timezone.clone()),
@@ -122,6 +124,7 @@ where
                 work_start_time: Set(work_start_time),
                 work_end_time: Set(work_end_time),
                 allowed_session_durations: Set(data.allowed_session_durations.clone()),
+                is_bookable: Set(data.is_bookable),
                 minimum_notice_minutes: Set(60),
                 buffer_before_minutes: Set(0),
                 buffer_after_minutes: Set(0),

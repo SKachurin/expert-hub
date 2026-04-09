@@ -5,7 +5,8 @@ export const els = {
     displayName: document.getElementById('display-name'),
     telegramBio: document.getElementById('telegram-bio'),
     usernameReadonly: document.getElementById('username-readonly'),
-    publicSlugReadonly: document.getElementById('public-slug-readonly'),
+    publicLinkReadonly: document.getElementById('public-link-readonly'),
+    copyPublicLinkBtn: document.getElementById('copy-public-link-btn'),
     timezoneReadonly: document.getElementById('timezone-readonly'),
     walletReadonly: document.getElementById('wallet-readonly'),
 

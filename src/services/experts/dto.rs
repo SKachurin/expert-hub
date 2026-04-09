@@ -38,6 +38,7 @@ pub struct UpsertExpertData {
     pub work_start_time: String,
     pub work_end_time: String,
     pub allowed_session_durations: Value,
+    pub is_bookable: bool,
 }
 
 #[derive(Debug, Serialize)]
