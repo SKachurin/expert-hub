@@ -1,10 +1,50 @@
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait,
+    ConnectionTrait,
+    EntityTrait,
+    QueryFilter,
+    QueryOrder,
+    QuerySelect,
+};
 
 use crate::entities::experts;
 
 use super::calendars::load_edit_calendar_options;
-use super::dto::{EditExpertResponse, PublicExpertResponse};
+use super::dto::{EditExpertResponse, PopularExpertCardResponse, PublicExpertResponse};
 use super::helpers::format_time;
+
+pub async fn get_popular_experts<C>(
+    db: &C,
+    limit: u64,
+) -> Result<Vec<PopularExpertCardResponse>, String>
+where
+    C: ConnectionTrait,
+{
+    let safe_limit = if limit == 0 { 6 } else { limit.min(12) };
+
+    let experts = experts::Entity::find()
+        .filter(experts::Column::IsActive.eq(true))
+        .filter(experts::Column::IsBookable.eq(true))
+        .order_by_desc(experts::Column::ReviewsCount)
+        .order_by_desc(experts::Column::ExpertRating)
+        .order_by_desc(experts::Column::UpdatedAt)
+        .limit(safe_limit)
+        .all(db)
+        .await
+        .map_err(|e| format!("failed to query popular experts: {e}"))?;
+
+    Ok(experts
+        .into_iter()
+        .map(|expert| PopularExpertCardResponse {
+            public_slug: expert.public_slug,
+            display_name: expert.display_name,
+            username: expert.username.unwrap_or_default(),
+            photo_url: expert.photo_url,
+            expert_rating: expert.expert_rating,
+            reviews_count: expert.reviews_count,
+        })
+        .collect())
+}
 
 pub async fn get_edit_expert_by_slug<C>(
     db: &C,

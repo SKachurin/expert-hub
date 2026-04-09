@@ -8,6 +8,7 @@ pub mod validation;
 pub use dto::{
     EditCalendarOption,
     EditExpertResponse,
+    PopularExpertCardResponse,
     PublicExpertResponse,
     UpdateExpertProfileRequest,
     UpsertExpertData,
@@ -23,5 +24,6 @@ pub use mutations::{
 
 pub use queries::{
     get_edit_expert_by_slug,
+    get_popular_experts,
     get_public_expert_by_slug,
 };

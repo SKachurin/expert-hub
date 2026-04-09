@@ -11,6 +11,7 @@ use crate::{
         },
         experts::{
             get_edit_expert_by_slug,
+            get_popular_experts,
             get_public_expert_by_slug,
             update_expert_profile_by_slug,
             upsert_expert,
@@ -20,6 +21,16 @@ use crate::{
     },
     state::AppState,
 };
+
+#[derive(Debug, Deserialize)]
+pub struct PopularExpertsQuery {
+    #[serde(default = "default_popular_limit")]
+    pub limit: u64,
+}
+
+fn default_popular_limit() -> u64 {
+    6
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PublicExpertQuery {
@@ -283,6 +294,22 @@ pub async fn delete_calendar_connection_handler(
     match delete_calendar_connection_for_expert(&state.db, expert.id, connection_id).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "status": "ok"
+        })),
+        Err(err) => HttpResponse::BadRequest().json(serde_json::json!({
+            "status": "error",
+            "message": err
+        })),
+    }
+}
+
+#[get("/api/experts/popular")]
+pub async fn get_popular_experts_handler(
+    state: web::Data<AppState>,
+    query: web::Query<PopularExpertsQuery>,
+) -> HttpResponse {
+    match get_popular_experts(&state.db, query.limit).await {
+        Ok(items) => HttpResponse::Ok().json(serde_json::json!({
+            "items": items
         })),
         Err(err) => HttpResponse::BadRequest().json(serde_json::json!({
             "status": "error",

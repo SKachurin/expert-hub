@@ -11,9 +11,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
     <title>Expert Hub</title>
 
-    <link rel="stylesheet" href="/css/base.css"/>
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
-    <script type="module" src="/js/index.js"></script>
+    <link rel="stylesheet" href="/css/base.css?v=20260409-1"/>
+    <script type="module" src="/js/index.js?v=20260409-1"></script>
 </head>
 <body>
 <div class="app">
@@ -55,6 +55,18 @@
         </div>
     </section>
 
+    <section class="panel popular-experts-card">
+        <div class="section-head-inline">
+            <div>
+                <h2 class="section-title">Popular experts</h2>
+                <p class="section-note">Trusted experts already available for booking.</p>
+            </div>
+        </div>
+
+        <div id="popular-experts-list" class="popular-experts-grid"></div>
+        <div id="popular-experts-empty" class="empty-inline hidden">Experts will appear here soon.</div>
+    </section>
+
     <section class="panel cta-card">
         <div class="cta-main">
             <div>
@@ -68,17 +80,9 @@
 
     <section class="panel placeholder-card">
         <h2 class="section-title">Coming next</h2>
-        <p class="section-note">This is the marketplace. Discovery and expert lists come after onboarding flow is wired into routes and DB.</p>
+        <p class="section-note">This is the marketplace. Discovery is starting now, while deeper browsing still comes next.</p>
 
         <div class="mini-list">
-            <div class="mini-row">
-                <div class="mini-left">
-                    <div class="mini-title">Popular experts</div>
-                    <div class="mini-sub">Featured cards will appear here later</div>
-                </div>
-                <div class="mini-state">Soon</div>
-            </div>
-
             <div class="mini-row">
                 <div class="mini-left">
                     <div class="mini-title">Category pages</div>
@@ -90,7 +94,7 @@
             <div class="mini-row">
                 <div class="mini-left">
                     <div class="mini-title">Search results</div>
-                    <div class="mini-sub">Real search after expert records exist</div>
+                    <div class="mini-sub">Real search after more expert records exist</div>
                 </div>
                 <div class="mini-state">Soon</div>
             </div>

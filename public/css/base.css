@@ -93,6 +93,7 @@ body {
 
 .search-card,
 .categories-card,
+.popular-experts-card,
 .cta-card,
 .placeholder-card {
     padding: 18px;
@@ -291,4 +292,109 @@ body {
 
 .btn-soft-blue:hover {
     background: rgba(86, 168, 245, 0.18);
+}
+
+.section-head-inline {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.popular-experts-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.popular-expert-tile {
+    display: block;
+    text-decoration: none;
+    color: var(--text);
+    padding: 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: transform .15s ease, background .15s ease, border-color .15s ease;
+}
+
+.popular-expert-tile:visited {
+    color: var(--text);
+}
+
+.popular-expert-tile:active {
+    transform: translateY(1px);
+}
+
+.popular-expert-avatar-wrap {
+    margin-bottom: 12px;
+}
+
+.popular-expert-avatar {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 18px;
+    object-fit: cover;
+    display: block;
+    background: #151b25;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
+.popular-expert-avatar-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 28px;
+    font-weight: 800;
+    background: rgba(255,255,255,0.035);
+}
+
+.popular-expert-name {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: var(--text);
+}
+
+.popular-expert-username {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.popular-expert-meta {
+    margin-top: 10px;
+    display: grid;
+    gap: 4px;
+}
+
+.popular-expert-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+}
+
+.popular-expert-star {
+    color: #ffd66b;
+}
+
+.popular-expert-reviews {
+    font-size: 12px;
+    color: var(--muted-2);
+}
+
+.empty-inline {
+    margin-top: 14px;
+    color: var(--muted-2);
+    font-size: 13px;
+    line-height: 1.45;
 }

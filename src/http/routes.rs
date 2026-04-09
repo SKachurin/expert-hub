@@ -32,4 +32,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
     cfg.service(pages::expert_public_page);
     cfg.service(pages::expert_edit_page);
+
+    cfg.service(experts::get_popular_experts_handler);
 }

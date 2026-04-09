@@ -141,3 +141,13 @@ pub struct PublicExpertResponse {
     pub expert_rating: Decimal,
     pub reviews_count: i32,
 }
+
+#[derive(Debug, Serialize)]
+pub struct PopularExpertCardResponse {
+    pub public_slug: String,
+    pub display_name: String,
+    pub username: String,
+    pub photo_url: Option<String>,
+    pub expert_rating: Decimal,
+    pub reviews_count: i32,
+}
