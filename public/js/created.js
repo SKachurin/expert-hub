@@ -25,6 +25,9 @@ async function copyText(value, successText) {
         setDebugStatus('Copy failed.');
     }
 }
+function buildTelegramMiniAppPublicLink(slug) {
+    return `https://t.me/expert_hub_bot?startapp=${encodeURIComponent(slug)}`;
+}
 
 function initCreatedPage() {
     const slug = getSlugFromUrl();
@@ -39,7 +42,7 @@ function initCreatedPage() {
         return;
     }
 
-    const publicUrl = `${window.location.origin}/e/${slug}`;
+    const publicUrl = buildTelegramMiniAppPublicLink(slug);
     const editUrl = `${window.location.origin}/e/${slug}/edit`;
 
     publicUrlEl.textContent = publicUrl;

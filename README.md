@@ -2,7 +2,7 @@
 
 Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web, PostgreSQL, SeaORM, static frontend pages, Telegram web auth / Mini App context, TON wallet connection, and Google Calendar OAuth integration.
 
-The project is currently focused on **Phase 1: expert onboarding and public expert pages**.
+The project is currently focused on **Phase 1: expert onboarding, public expert pages, and real availability display**.
 
 At this stage, the project already has:
 
@@ -11,15 +11,16 @@ At this stage, the project already has:
 - SeaORM entities and migrations
 - health endpoint
 - Telegram web auth verification endpoint
-- Telegram Mini App user detection on frontend
+- Telegram Mini App integration on frontend
+- shared Telegram identity resolver for Mini App + stored web auth fallback
 - TON wallet connection on frontend
 - marketplace shell page
 - expert onboarding page
 - expert setup registration backend flow
 - public slug support for experts
 - profile-created success page
-- expert public page shell
-- expert edit page shell
+- expert public page
+- expert edit page
 - database tables for experts, calendar connections, bookings, payments, reviews, tags, categories, and sync events
 - environment split for dev and prod Telegram bot auth
 - Google OAuth credentials wired into runtime flow
@@ -27,6 +28,10 @@ At this stage, the project already has:
 - frontend Google Calendar connection UI
 - selection of up to 2 calendars per Google connection
 - support for adding up to 5 calendar connection blocks in expert onboarding
+- real public availability generation from expert schedule settings
+- Google Calendar free/busy availability checks
+- Google access token refresh during availability fetch
+- Telegram Mini App deep-link routing using `startapp`
 
 ---
 
@@ -39,15 +44,20 @@ Right now the real implemented direction is:
 1. expert opens onboarding flow
 2. connects Telegram
 3. connects TON wallet
-4. fills basic expert profile fields
+4. fills expert profile fields
 5. connects Google Calendar
 6. selects calendars from Google account
 7. optionally adds more calendar connection blocks
 8. submits expert setup to backend
 9. backend creates or updates expert and related calendar connection rows
 10. backend generates and serves expert public/edit page routes based on `public_slug`
+11. public expert page loads real expert data
+12. public expert page calculates real free slots for the next 7-day period
+13. user can open the app through Telegram Mini App deep links:
+  - `startapp=s` → register
+  - `startapp={slug}` → expert public page
 
-This means the project already has the backend and DB foundation for expert records and related structures, plus a working Phase 1 onboarding flow. Booking, payment finalization, real availability sync, session detection, and reviews are still incomplete.
+This means the project already has the backend and DB foundation for expert records and related structures, a working Phase 1 onboarding flow, and a real public availability view. Booking request flow, payment finalization, internal booking holds, session detection, and full review flow are still ahead.
 
 ---
 
@@ -63,6 +73,7 @@ This means the project already has the backend and DB foundation for expert reco
 - Reqwest
 - UUID
 - Chrono
+- Chrono-TZ
 - Rust Decimal
 
 ### Frontend
@@ -83,7 +94,9 @@ This means the project already has the backend and DB foundation for expert reco
 ### `/`
 Marketplace shell page.
 
-This is currently a placeholder public homepage for the future marketplace. It explains the direction and links to expert onboarding.
+This is currently the main Mini App entry page and the placeholder marketplace shell. It also acts as the Telegram Mini App launch router:
+- `startapp=s` redirects to expert registration
+- `startapp={slug}` redirects to the expert public page
 
 ### `/expert-new.html`
 Main expert onboarding page.
@@ -106,21 +119,38 @@ Success page shown after expert creation.
 
 This page shows:
 
-- public expert link
+- Telegram Mini App public expert link
 - edit page link
 - next-step hints for the expert
 
 ### `/e/{slug}`
 Public expert page route.
 
-This is the public expert page shell for a direct expert URL.  
-Frontend JS is expected to load public expert data and availability data from backend API routes.
+This page currently handles:
+
+- loading public expert profile data
+- showing hourly rate
+- showing allowed consultation durations
+- duration picker UI
+- real 7-day availability generation
+- previous / next 7-day navigation
+- owner-gated edit icon when Telegram identity resolves and matches the expert
 
 ### `/e/{slug}/edit`
 Expert edit page route.
 
-This is the private editing page shell for a specific expert slug.  
-It is intended to become the full editor for expert-controlled profile fields.
+This is the private editing page shell for a specific expert slug.
+
+It currently supports:
+
+- Telegram identity resolution
+- loading editable expert data by slug
+- editing profile fields
+- editing rate / schedule / durations / visibility
+- viewing connected calendars
+- choosing the primary calendar
+- connecting additional Google calendars
+- saving updated expert profile settings
 
 ---
 
@@ -161,13 +191,23 @@ These routes handle Google OAuth redirect, temporary OAuth session storage, Goog
 
 These routes return the static page shells for public and edit expert pages.
 
-### Expert API direction
-The project now also has expert-service work around:
+### Expert API routes
+The project now has working service-level expert API flow around:
+
 - public expert lookup by slug
 - edit expert lookup by slug
 - expert profile update by slug
+- public availability generation by slug and duration
 
-The exact final API shape is still being stabilized.
+Important public API route:
+
+- `GET /api/experts/{slug}/public?offset_days={n}&duration_minutes={m}`
+
+This route now returns:
+
+- public expert profile data
+- real availability for the requested 7-day period
+- slots filtered by selected duration
 
 ---
 
@@ -247,13 +287,31 @@ This means the DB is already wider than the current UI.
 The project supports two contexts.
 
 ### 1. Telegram Mini App context
-If the page is opened inside Telegram Mini App, frontend reads Telegram user from:
+If the page is opened in a real Telegram Mini App launch context, frontend can read Telegram user from:
 
 `window.Telegram.WebApp.initDataUnsafe.user`
 
-### 2. Web auth fallback
-If the page is opened in a normal browser, frontend uses Telegram OAuth widget / embed flow and then sends auth payload to backend `POST /tg-auth` for verification.
+### 2. Web / stored fallback context
+If Mini App user data is unavailable, frontend can fall back to a stored Telegram user resolved from earlier auth flow.
 
+Shared Telegram auth logic now includes:
+
+- Mini App user resolver
+- stored Telegram user resolver
+- shared `resolveTelegramUser()` helper
+- Telegram WebApp init helper
+
+This means owner-gated UI can work in both Mini App and previously authenticated web contexts, but only if Telegram identity is available through one of those paths.
+
+### Telegram Mini App deep links
+The app now supports short Telegram launch links through `startapp`:
+
+- `https://t.me/expert_hub_bot?startapp=s` → registration
+- `https://t.me/expert_hub_bot?startapp={slug}` → public expert page
+
+The Mini App root page reads the launch parameter and internally redirects to the correct route.
+
+### Dev / prod bot split
 The project uses separate bot identities for dev and prod:
 
 - dev bot: `@expert_hub_bot`
@@ -272,8 +330,9 @@ Current behavior:
 - user can connect wallet on expert onboarding page
 - connected wallet address is shown in UI
 - wallet address is included in expert registration payload
+- wallet can also be updated from the edit page flow
 
-At this stage wallet connection is onboarding-level only. Real payment flow and smart contract settlement logic are planned later.
+At this stage wallet connection is still onboarding / profile-level only. Real payment flow and smart contract settlement logic are planned later.
 
 ---
 
@@ -299,30 +358,30 @@ Backend registration flow creates or updates expert data and stores related cale
 
 The registration flow is working at MVP onboarding level for expert creation.
 
-### Current known limitation in registration
+### Current registration status
+Compared to earlier state, calendar connection persistence is now much more real in the working flow:
 
-During expert registration, backend creates `calendar_connections` rows, but those rows are still not fully hydrated with all provider-backed fields.
+- selected Google calendars are saved
+- provider-backed connection labels are saved
+- selected calendar names and timezones are saved
+- access token / refresh token can be used for real free/busy checks
+- connection rows can be marked as connected
+- public availability can use saved Google connections directly
 
-Right now the registration insert is still closer to a minimal placeholder form than a final synchronized provider record.
+### Still not finished
+There are still important limitations:
 
-That means fields such as these may still remain empty or incomplete after onboarding:
-
-- `account_email`
-- `provider_account_id`
-- `selected_calendar_id`
-- `selected_calendar_name`
-- `selected_calendar_timezone`
-- `access_token`
-- `refresh_token`
-- `scopes_json`
-
-So onboarding UI works, but calendar connection persistence is not yet fully finished.
+- Google OAuth session storage is still temporary backend runtime state
+- on backend restart, temporary Google OAuth session ids are lost
+- reconnect / reauth handling can still be improved
+- durable sync state and background calendar sync are not implemented yet
+- the registration/edit mapping still needs cleanup and hardening for production reliability
 
 ---
 
 ## Calendar status
 
-Calendar integration is now **partially real and working for onboarding**.
+Calendar integration is now **real enough to power public availability**, but still not production-complete.
 
 ### Already done
 - calendar connection entities and migrations exist
@@ -336,61 +395,85 @@ Calendar integration is now **partially real and working for onboarding**.
 - connected calendar names are shown in onboarding UI
 - expert registration sends selected Google session references to backend
 - expert registration creates corresponding `calendar_connections` rows in DB
+- public availability fetch now uses real Google free/busy API
+- access token refresh is handled during availability fetch
+- enabled Google calendars are used as blockers for slot calculation
 
 ### Still not finished
-- Google OAuth sessions are still temporary backend runtime state, not durable storage
-- on backend restart, previously temporary Google OAuth session ids are lost
-- backend registration does not yet fully map Google session data into `calendar_connections`
-- `calendar_connections` rows are still closer to minimal / pending rows than final provider-connected rows
-- real calendar sync / free-busy import is not implemented yet
+- Google OAuth sessions are still temporary backend runtime state
+- there is no durable long-term background sync process yet
+- `calendar_sync_events` are not yet powering a real sync pipeline
 - Calendly is still placeholder only
 - connected calendar editing UX is still basic
-- calendar picker still uses a browser prompt instead of a custom in-page modal/list UI
+- calendar picker still uses a browser prompt instead of a custom modal/list UI
+- there is no advanced cache / sync optimization layer yet
 
-So calendar support is now **real for onboarding**, but not yet production-complete.
+So calendar support is now **real for onboarding and public availability**, but not yet production-complete.
 
 ---
 
 ## Public expert page status
 
-Public slug support exists and public expert page HTML is now served.
+Public slug support exists and the public expert page is now real enough to demonstrate the expert-facing marketplace flow.
 
-Current direction of the public page:
+Current public page behavior:
 
 - show public expert data
-- show rates
+- show hourly rate
 - show allowed consultation durations
-- later show free slots in a 7-day window
-- later page through next 7-day windows
+- show a duration picker
+- default to the lowest allowed duration
+- show real free slots for the selected duration
+- page through previous / next 7-day windows
 - do not expose names/details of busy calendar events
 - keep personal event data private
+- show owner-gated edit icon when current Telegram identity matches the expert
 
-### Important current dev note
-The public page route is sensitive to route shape and static-serving order.  
-The current route without trailing slash is the intended one:
+### Availability logic currently implemented
+Public availability now applies:
 
-- good: `/e/{slug}`
-- bad in current dev setup: `/e/{slug}/`
+- working days
+- work start / end time
+- selected duration
+- minimum notice
+- max days ahead
+- buffer before / after
+- Google busy intervals
+- internal booking blockers
 
-If the browser requests the trailing-slash version, Nginx / static routing may return `404` before the dynamic route is reached.
+This means slot generation is no longer fake placeholder data.
+
+### Current pricing display direction
+The expert stores an `hourly_rate`.
+
+Public page direction is now:
+
+- show base pricing as hourly rate
+- derive session price from selected duration later in booking / summary flow
+
+Example:
+- 30 min = half hourly rate
+- 60 min = full hourly rate
 
 ---
 
 ## Edit expert page status
 
-Edit page shell is now served.
+Edit page is now beyond a shell and is a real profile-management page, though still incomplete.
 
-Current intended direction:
+Current implemented direction:
 
-- support the same Telegram identity detection / connect flow as onboarding
-- if opened in Telegram, auto-resolve Telegram user
-- if opened in web context, show Telegram connect flow
-- after Telegram identity is known, load expert data for that slug
-- show editable expert-controlled DB fields in grouped sections
-- keep hidden/internal strategy fields controlled by backend defaults when not appropriate for UI
+- support Telegram identity resolution / connect flow
+- load expert data for the slug
+- compare current Telegram identity to expert owner identity
+- allow the owner to edit expert-controlled fields
+- save profile updates back to backend
+- show existing connected calendars
+- allow primary calendar selection
+- support adding more Google calendar connections
 
-### Fields planned as editable on edit page
-These are the main expert-facing fields worth editing:
+### Fields currently meaningful on edit page
+Main expert-facing fields:
 
 - display name
 - bio
@@ -407,18 +490,21 @@ These are the main expert-facing fields worth editing:
 - active flag
 - available for calls / bookable flag
 - primary calendar selection
+- wallet replacement flow
 
 ### Fields intentionally not for direct editing right now
 These should stay backend-controlled or hidden for now:
 
-- timezone  
+- timezone
   source of truth should come from calendar
 - calendar conflict mode
-- booking target strategy  
-  backend should keep working with fixed mode/default strategy unless UI is ready
+- booking target strategy
 - tokens / secrets / raw provider metadata
 - review counters / rating snapshots
 - system sync fields
+
+### Important note
+Ownership / mismatch handling still needs final hardening and redirect behavior cleanup. The intended direction is clear, but this is still not a finished production auth-guard flow.
 
 ---
 
@@ -439,6 +525,9 @@ Important current frontend structure includes:
 ### Created page
 - `public/js/created.js`
 
+### Public expert page
+- `public/js/expert-public.js`
+
 ### Expert onboarding
 - `public/js/expert-new/dom.js`
 - `public/js/expert-new/expert-draft.js`
@@ -449,7 +538,81 @@ Important current frontend structure includes:
 - `public/js/expert-new/register.js`
 - `public/js/expert-new/index.js`
 
+### Expert edit page
+- `public/js/expert-edit/expert-edit.js`
+
 This refactor direction is correct and should continue.
+
+---
+
+## What is working now
+
+At this moment, the project can already demonstrate this realistic flow:
+
+1. expert opens the app
+2. connects Telegram
+3. connects TON wallet
+4. fills schedule / rate / profile
+5. connects Google Calendar
+6. selects calendars
+7. submits setup
+8. receives a Telegram Mini App public profile link
+9. opens public expert page
+10. sees real availability for selected duration
+11. owner can reach the edit page from owner-gated controls
+
+This is already much stronger than an HTML shell MVP.
+
+---
+
+## What is still ahead
+
+Major next steps still ahead of the current implementation:
+
+### Booking flow
+- slot click → booking intent
+- booking request record creation
+- booking confirmation UI
+- quote calculation from hourly rate and duration
+- expert approval / rejection flow
+
+### Payment / TON contract flow
+- real payment creation
+- TON contract integration
+- payment locking
+- settlement / refund rules
+
+### Session / consultation lifecycle
+- internal booking holds
+- confirmed booking state transitions
+- session outcome tracking
+- Telegram call detection integration
+- no-show handling
+
+### Review flow
+- review creation after consultation
+- review visibility rules
+- system-generated no-show tags
+- rating recalculation
+
+### Calendar hardening
+- durable provider token persistence hardening
+- reconnect handling
+- background sync strategy
+- proper use of `calendar_sync_events`
+- better multi-calendar UX
+
+### Auth hardening
+- final owner mismatch redirect logic
+- stricter edit-page owner enforcement
+- clearer Telegram auth prompts for protected actions
+
+### Marketplace layer
+- real expert list
+- category browsing
+- search
+- featured experts
+- ranking / discovery
 
 ---
 
@@ -480,7 +643,6 @@ but not on:
 then the problem is often outside Rust app code, usually one of:
 
 - Nginx route handling
-- trailing slash mismatch
 - tunnel path forwarding expectation
 - static files catching route before dynamic handler
 
