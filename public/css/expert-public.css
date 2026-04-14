@@ -292,3 +292,89 @@
     height: 18px;
     display: block;
 }
+
+.slot-btn.is-selected {
+    background: rgba(86, 168, 245, 0.18);
+    border-color: rgba(86, 168, 245, 0.34);
+    color: #dff1ff;
+}
+
+.booking-summary-box {
+    margin-bottom: 14px;
+    padding: 14px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.eh-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(4, 7, 12, 0.72);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.eh-modal {
+    width: 100%;
+    max-width: 460px;
+    border-radius: 24px;
+    padding: 20px;
+    background: linear-gradient(180deg, rgba(18, 23, 34, 0.98), rgba(14, 18, 27, 0.99));
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+}
+
+.slot-chip {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    border-radius: 14px;
+    padding: 10px 12px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.slot-chip.is-selected {
+    background: rgba(86, 168, 245, 0.18);
+    border-color: rgba(86, 168, 245, 0.34);
+    color: #dff1ff;
+}
+
+.wallet-required-text {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+}
+
+.wallet-required-text-spaced {
+    margin-top: 18px;
+}
+
+.booking-ton-host {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+    margin-bottom: 20px;
+}
+
+.booking-ton-host .tc-root,
+.booking-ton-host .tc-button,
+.booking-ton-host button {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.eh-modal .btn-grid {
+    margin-top: 12px;
+}

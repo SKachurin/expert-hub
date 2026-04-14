@@ -9,6 +9,7 @@ use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use std::collections::{BTreeMap, HashSet};
 
 use reqwest::StatusCode;
+use crate::services::bookings::ACTIVE_BOOKING_BLOCKER_STATUSES;
 
 use crate::{
     config::AppConfig,
@@ -315,19 +316,13 @@ async fn load_booking_busy_intervals<C>(
 where
     C: ConnectionTrait,
 {
-    let ignore_statuses = vec![
-        "expert_rejected".to_string(),
-        "expert_no_show".to_string(),
-        "customer_no_show".to_string(),
-        "refunded".to_string(),
-        "closed".to_string(),
-    ];
-
     let rows = bookings::Entity::find()
         .filter(bookings::Column::ExpertId.eq(expert_id))
         .filter(bookings::Column::SlotStart.lt(period_end_utc.fixed_offset()))
         .filter(bookings::Column::SlotEnd.gt(period_start_utc.fixed_offset()))
-        .filter(bookings::Column::Status.is_not_in(ignore_statuses))
+        .filter(bookings::Column::Status.is_in(
+            ACTIVE_BOOKING_BLOCKER_STATUSES.iter().copied()
+        ))
         .all(db)
         .await
         .map_err(|e| format!("failed to load bookings: {e}"))?;

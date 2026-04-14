@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/css/base.css"/>
     <link rel="stylesheet" href="/css/expert-public.css"/>
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <script type="module" src="/js/expert-public.js"></script>
 </head>
 <body>
@@ -95,8 +96,10 @@
     </section>
 
     <section class="panel actions-card">
+        <div id="selected-slot-summary" class="booking-summary-box hidden"></div>
+
         <div class="btn-grid">
-            <button id="book-btn" class="btn btn-primary" type="button" disabled>Booking comes next</button>
+            <button id="book-btn" class="btn btn-primary" type="button" disabled>Book selected slot</button>
             <a class="btn btn-secondary" href="/">Back to marketplace</a>
         </div>
     </section>
@@ -109,6 +112,52 @@
             <a href="/privacy.html">Privacy Policy</a> ·
             <a href="/terms.html">Terms and Conditions</a>
         </p>
+    </div>
+</div>
+
+<div id="telegram-required-modal" class="eh-modal-overlay hidden">
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="telegram-required-title">
+        <h3 id="telegram-required-title">Telegram required</h3>
+        <p>Open this expert page inside Telegram Mini App or connect Telegram first.</p>
+        <div class="btn-grid">
+            <button id="telegram-required-close" class="btn btn-secondary" type="button">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="wallet-required-modal" class="eh-modal-overlay hidden">
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-required-title">
+        <h3 id="wallet-required-title">TON wallet required</h3>
+        <p class="wallet-required-text">
+            Connect your TON wallet to continue.
+        </p>
+
+        <p class="wallet-required-text wallet-required-text-spaced">
+            If you do not have one yet, you can create it inside Telegram for free:
+            Search for @wallet in the Telegram search bar.
+        </p>
+
+        <div id="booking-ton-connect" class="btn-ton-host booking-ton-host"></div>
+        <div class="btn-grid">
+<!--            <a-->
+<!--                    class="btn btn-secondary"-->
+<!--                    href="https://wallet.ton.org/"-->
+<!--                    target="_blank"-->
+<!--                    rel="noopener noreferrer"-->
+<!--            >Learn about TON wallet</a>-->
+            <button id="wallet-required-close" class="btn btn-secondary" type="button">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="booking-confirm-modal" class="eh-modal-overlay hidden">
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="booking-confirm-title">
+        <h3 id="booking-confirm-title">Confirm prepayment</h3>
+        <div id="booking-confirm-text" class="section-note" style="margin-top: 8px;"></div>
+        <div class="btn-grid">
+            <button id="booking-confirm-submit" class="btn btn-primary" type="button">Confirm and continue</button>
+            <button id="booking-confirm-close" class="btn btn-secondary" type="button">Cancel</button>
+        </div>
     </div>
 </div>
 </body>

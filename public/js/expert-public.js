@@ -29,10 +29,69 @@ const durationPickerWrapEl = document.getElementById('duration-picker-wrap');
 const durationPickerEl = document.getElementById('duration-picker');
 const editProfileBtnEl = document.getElementById('edit-profile-btn');
 
+const bookBtnEl = document.getElementById('book-btn');
+const selectedSlotSummaryEl = document.getElementById('selected-slot-summary');
+
+const telegramRequiredModalEl = document.getElementById('telegram-required-modal');
+const walletRequiredModalEl = document.getElementById('wallet-required-modal');
+const bookingConfirmModalEl = document.getElementById('booking-confirm-modal');
+
+const telegramRequiredCloseEl = document.getElementById('telegram-required-close');
+const walletRequiredCloseEl = document.getElementById('wallet-required-close');
+const bookingConfirmCloseEl = document.getElementById('booking-confirm-close');
+const bookingConfirmSubmitEl = document.getElementById('booking-confirm-submit');
+const bookingConfirmTextEl = document.getElementById('booking-confirm-text');
+
+let selectedSlot = null;
+let currentExpert = null;
+let currentTonConnectUi = null;
+let currentWalletAddress = '';
+
 let currentOffsetDays = 0;
 let currentSlug = null;
 let currentDurationMinutes = null;
 let expertAllowedDurations = [];
+
+let currentPageRequestController = null;
+let currentPageRequestId = 0;
+
+function cancelCurrentPageRequest() {
+    if (currentPageRequestController) {
+        currentPageRequestController.abort();
+        currentPageRequestController = null;
+    }
+}
+
+function updatePeriodButtonsState(isLoading = false) {
+    if (!prevPeriodBtnEl || !nextPeriodBtnEl) return;
+
+    prevPeriodBtnEl.disabled = isLoading || currentOffsetDays <= 0;
+    nextPeriodBtnEl.disabled = isLoading;
+}
+
+function syncSelectedSlotWithPayload(payload) {
+    if (!selectedSlot || !Array.isArray(payload?.days)) {
+        return;
+    }
+
+    const selectedKey = `${selectedSlot.start_utc}|${selectedSlot.duration_minutes}`;
+    let stillExists = false;
+
+    for (const day of payload.days) {
+        for (const slot of day.slots || []) {
+            const slotKey = `${slot.start_utc}|${slot.duration_minutes}`;
+            if (slotKey === selectedKey) {
+                stillExists = true;
+                break;
+            }
+        }
+        if (stillExists) break;
+    }
+
+    if (!stillExists) {
+        selectedSlot = null;
+    }
+}
 
 function setDebugStatus(text) {
     debugStatusEl.textContent = text || '';
@@ -94,6 +153,8 @@ function renderSlots(payload) {
 
     if (!Array.isArray(payload.days) || !payload.days.length) {
         slotsEmptyEl.classList.remove('hidden');
+        selectedSlot = null;
+        updateBookingUi();
         return;
     }
 
@@ -101,6 +162,8 @@ function renderSlots(payload) {
 
     if (!visibleDays.length) {
         slotsEmptyEl.classList.remove('hidden');
+        selectedSlot = null;
+        updateBookingUi();
         return;
     }
 
@@ -118,9 +181,29 @@ function renderSlots(payload) {
         chipList.className = 'slot-chip-list';
 
         day.slots.forEach((slot) => {
-            const chip = document.createElement('div');
+            const chip = document.createElement('button');
+            chip.type = 'button';
             chip.className = 'slot-chip';
             chip.textContent = `${slot.start_local} · ${slot.duration_minutes} min`;
+
+            const slotKey = `${slot.start_utc}|${slot.duration_minutes}`;
+            const selectedKey = selectedSlot
+                ? `${selectedSlot.start_utc}|${selectedSlot.duration_minutes}`
+                : null;
+
+            if (selectedKey === slotKey) {
+                chip.classList.add('is-selected');
+            }
+
+            chip.addEventListener('click', () => {
+                selectedSlot = {
+                    ...slot,
+                    day_label: day.label
+                };
+                renderSlots(payload);
+                updateBookingUi();
+            });
+
             chipList.appendChild(chip);
         });
 
@@ -175,39 +258,79 @@ async function loadPublicPage() {
         return;
     }
 
-    try {
-        setDebugStatus('Loading public page…');
+    cancelCurrentPageRequest();
 
+    const requestId = ++currentPageRequestId;
+    const controller = new AbortController();
+    currentPageRequestController = controller;
+
+    setDebugStatus('Loading public page…');
+    updatePeriodButtonsState(true);
+
+    try {
         const response = await fetch(
-            `/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}`
+            `/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}`,
+            { signal: controller.signal }
         );
 
-        const payload = await response.json();
+        const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
             throw new Error(payload.message || 'Failed to load public page.');
         }
 
+        if (requestId !== currentPageRequestId) {
+            return;
+        }
+
+        currentExpert = payload.expert;
+
         renderExpert(payload.expert);
         renderReviews(payload.reviews || []);
 
         expertAllowedDurations = normalizeDurations(payload.expert?.allowed_session_durations);
-        currentDurationMinutes = expertAllowedDurations.length ? expertAllowedDurations[0] : null;
+
+        if (
+            !currentDurationMinutes ||
+            !expertAllowedDurations.includes(currentDurationMinutes)
+        ) {
+            currentDurationMinutes = expertAllowedDurations.length
+                ? expertAllowedDurations[0]
+                : null;
+        }
 
         renderDurationPicker(expertAllowedDurations);
 
         if (currentDurationMinutes) {
+            syncSelectedSlotWithPayload(payload.availability);
             renderSlots(payload.availability);
+            updateBookingUi();
         } else {
             slotsListEl.innerHTML = '';
             slotsRangeLabelEl.textContent = '—';
             slotsEmptyEl.classList.remove('hidden');
+            selectedSlot = null;
+            updateBookingUi();
         }
 
         setDebugStatus('');
     } catch (error) {
+        if (error.name === 'AbortError') {
+            return;
+        }
+
         console.error(error);
+
+        if (requestId !== currentPageRequestId) {
+            return;
+        }
+
         setDebugStatus(error.message || 'Failed to load public page.');
+    } finally {
+        if (requestId === currentPageRequestId) {
+            currentPageRequestController = null;
+            updatePeriodButtonsState(false);
+        }
     }
 }
 
@@ -261,27 +384,50 @@ async function loadAvailabilityOnly() {
         return;
     }
 
+    cancelCurrentPageRequest();
+
+    const requestId = ++currentPageRequestId;
+    const controller = new AbortController();
+    currentPageRequestController = controller;
+    updatePeriodButtonsState(true);
     try {
-        setDebugStatus('Loading slots…');
+        setDebugStatus('Loading availability…');
 
         const response = await fetch(
-            `/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}&duration_minutes=${currentDurationMinutes}`
+            `/api/experts/${encodeURIComponent(currentSlug)}/public?offset_days=${currentOffsetDays}&duration_minutes=${currentDurationMinutes}`,
+            { signal: controller.signal }
         );
 
-        const payload = await response.json();
+        const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
             throw new Error(payload.message || 'Failed to load availability.');
         }
 
+        if (requestId !== currentPageRequestId) {
+            return;
+        }
+        syncSelectedSlotWithPayload(payload.availability);
         renderSlots(payload.availability);
-        renderReviews(payload.reviews || []);
+        updateBookingUi();
         setDebugStatus('');
     } catch (error) {
+        if (error.name === 'AbortError') {
+            return;
+        }
+
         console.error(error);
-        slotsListEl.innerHTML = '';
-        slotsEmptyEl.classList.remove('hidden');
-        setDebugStatus(error.message || 'Failed to load slots.');
+
+        if (requestId !== currentPageRequestId) {
+            return;
+        }
+
+        setDebugStatus(error.message || 'Failed to load availability.');
+    } finally {
+        if (requestId === currentPageRequestId) {
+            currentPageRequestController = null;
+            updatePeriodButtonsState(false);
+        }
     }
 }
 
@@ -293,12 +439,6 @@ function updateEditProfileButton(data) {
     editProfileBtnEl.href = `/e/${encodeURIComponent(data.public_slug)}/edit`;
 
     const telegramUser = resolveTelegramUser();
-
-    console.log('edit button check', {
-        telegramUser,
-        expertTelegramId: data.telegram_id,
-        slug: data.public_slug
-    });
 
     const isOwner =
         telegramUser &&
@@ -312,6 +452,172 @@ function updateEditProfileButton(data) {
     }
 }
 
+
+function closeModal(el) {
+    el?.classList.add('hidden');
+}
+
+function openModal(el) {
+    el?.classList.remove('hidden');
+}
+
+function formatSlotLabel(slot) {
+    return `${slot.day_label || ''} · ${slot.start_local || slot.start_utc || ''}`;
+}
+
+function deriveQuote(expert, durationMinutes) {
+    const rate = Number(expert?.hourly_rate || 0);
+    const quote = (rate * Number(durationMinutes || 0)) / 60;
+    return Number.isFinite(quote) ? quote.toFixed(2) : '0.00';
+}
+
+function updateBookingUi() {
+    if (!bookBtnEl) return;
+
+    const enabled = !!selectedSlot && !!currentDurationMinutes && !!currentExpert;
+    bookBtnEl.disabled = !enabled;
+
+    if (!enabled) {
+        selectedSlotSummaryEl?.classList.add('hidden');
+        selectedSlotSummaryEl.textContent = '';
+        return;
+    }
+
+    const quote = deriveQuote(currentExpert, currentDurationMinutes);
+    selectedSlotSummaryEl?.classList.remove('hidden');
+    selectedSlotSummaryEl.textContent =
+        `Selected: ${formatSlotLabel(selectedSlot)} · ${currentDurationMinutes} min · ${quote} ${currentExpert.currency}`;
+}
+
+function initBookingTonConnect() {
+    if (!window.TON_CONNECT_UI || currentTonConnectUi) {
+        return;
+    }
+
+    currentTonConnectUi = new window.TON_CONNECT_UI.TonConnectUI({
+        manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
+        buttonRootId: 'booking-ton-connect'
+    });
+
+    if (currentTonConnectUi.wallet?.account?.address) {
+        currentWalletAddress = currentTonConnectUi.wallet.account.address;
+    }
+
+    currentTonConnectUi.onStatusChange((wallet) => {
+        currentWalletAddress = wallet?.account?.address || '';
+        if (currentWalletAddress && walletRequiredModalEl && !walletRequiredModalEl.classList.contains('hidden')) {
+            closeModal(walletRequiredModalEl);
+            openBookingConfirmModal();
+        }
+    });
+}
+
+function openBookingConfirmModal() {
+    if (!selectedSlot || !currentExpert) return;
+
+    const quote = deriveQuote(currentExpert, currentDurationMinutes);
+    bookingConfirmTextEl.textContent =
+        `You are booking ${currentExpert.display_name} for ${currentDurationMinutes} minutes at ${selectedSlot.day_label} ${selectedSlot.start_local}. Prepayment: ${quote} ${currentExpert.currency}.`;
+    openModal(bookingConfirmModalEl);
+}
+
+async function createBookingRequest() {
+    const telegramUser = resolveTelegramUser();
+    if (!telegramUser?.id) {
+        openModal(telegramRequiredModalEl);
+        return;
+    }
+
+    const response = await fetch('/api/bookings/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            expert_slug: currentSlug,
+            slot_start: selectedSlot.start_utc,
+            duration_minutes: currentDurationMinutes,
+            requested_by_telegram_id: Number(telegramUser.id),
+            requested_by_username: telegramUser.username || null,
+            requested_by_display_name: [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ') || telegramUser.first_name || 'Telegram user',
+            requested_by_ton_wallet: currentWalletAddress || null
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.error || 'Booking request failed.');
+    }
+
+    return data;
+}
+
+async function beginBookingPayment(bookingId) {
+    const telegramUser = resolveTelegramUser();
+
+    const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/begin-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            telegram_id: Number(telegramUser.id),
+            ton_wallet_customer: currentWalletAddress
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.error || 'Payment start failed.');
+    }
+    return data;
+}
+
+bookBtnEl?.addEventListener('click', async () => {
+    try {
+        const telegramUser = resolveTelegramUser();
+        if (!telegramUser?.id) {
+            openModal(telegramRequiredModalEl);
+            return;
+        }
+
+        initBookingTonConnect();
+
+        if (!currentWalletAddress) {
+            openModal(walletRequiredModalEl);
+            return;
+        }
+
+        openBookingConfirmModal();
+    } catch (error) {
+        console.error(error);
+        setDebugStatus(error.message || 'Booking flow failed.');
+    }
+});
+
+bookingConfirmSubmitEl?.addEventListener('click', async () => {
+    try {
+        bookingConfirmSubmitEl.disabled = true;
+
+        const requested = await createBookingRequest();
+        if (!requested?.id) {
+            return;
+        }
+        const started = await beginBookingPayment(requested.id);
+
+        closeModal(bookingConfirmModalEl);
+        setDebugStatus(`Booking #${started.id} created. Status: ${started.status}. Payment: ${started.payment_status || 'n/a'}.`);
+
+        selectedSlot = null;
+        updateBookingUi();
+        loadPublicPage();
+    } catch (error) {
+        console.error(error);
+        setDebugStatus(error.message || 'Booking failed.');
+    } finally {
+        bookingConfirmSubmitEl.disabled = false;
+    }
+});
+
+telegramRequiredCloseEl?.addEventListener('click', () => closeModal(telegramRequiredModalEl));
+walletRequiredCloseEl?.addEventListener('click', () => closeModal(walletRequiredModalEl));
+bookingConfirmCloseEl?.addEventListener('click', () => closeModal(bookingConfirmModalEl));
 
 document.addEventListener('DOMContentLoaded', () => {
     initTelegramWebApp();
@@ -329,4 +635,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     loadPublicPage();
+    initBookingTonConnect();
+    updateBookingUi();
 });

@@ -1,4 +1,5 @@
 pub mod availability;
+pub mod bookings;
 pub mod calendar_connections;
 pub mod expert_setup;
 pub mod experts;

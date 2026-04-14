@@ -581,13 +581,62 @@ Major next steps still ahead of the current implementation:
 - TON contract integration
 - payment locking
 - settlement / refund rules
+- contract outcome driven by booking status and Telegram research-service session events
+
+### Telegram call detection direction
+
+The booking/session completion logic is planned around a **Telegram research service** that acts as the system source of truth for consultation connection events.
+
+For V1, the project should **not** rely on detecting a private 1-to-1 Telegram call between expert and customer from outside the call. That is not considered a safe or reliable foundation for payment settlement.
+
+#### Chosen V1 direction
+Use a **controlled Telegram conference/group call per booking**.
+
+Planned flow:
+
+1. a booking reaches the funded / waiting-for-session stage
+2. a dedicated **Telethon watcher account** is assigned to that booking
+3. the watcher joins the booking call as a silent intermediary
+4. the watcher listens for Telegram MTProto participant updates
+5. the watcher detects:
+  - expert joined
+  - customer joined
+  - participant source IDs / active participant state
+6. the watcher sends a system event back to Expert Hub
+7. Expert Hub stores the raw event in `telegram_call_events`
+8. booking and payment outcome are updated from that system event
+
+#### Important rules
+- **Source of truth = research service event**
+- manual claims do not override the system event
+- watcher should remain in the call until outcome is decided
+- the project should **not** rely on “join and leave immediately” monitoring for payout logic
+- for marketplace scale, use a **pool of watcher Telegram accounts**, not one watcher for all overlapping sessions
+
+#### Intended V1 outcome logic
+- both expected users detected in the controlled booking call within the allowed window → `completed`
+- expert absent → `expert_no_show`
+- customer absent after grace period → `customer_no_show` / `in_grace_period` flow, depending on the final backend transition rules
+
+#### Why this fits the current project
+This direction matches the current backend / schema foundation:
+
+- `telegram_call_events` already exists for raw Telegram call research / detection events
+- the broader project direction already assumes that the research service decides session outcome
+
+#### Still pending
+- build and test the Telethon watcher container
+- confirm the exact MTProto event flow in real Telegram conference sessions
+- define the final event names written into `telegram_call_events`
+- connect those events to booking status transitions and TON smart-contract settlement rules
 
 ### Session / consultation lifecycle
 - internal booking holds
 - confirmed booking state transitions
 - session outcome tracking
-- Telegram call detection integration
+- controlled Telegram conference-call detection via Telethon watcher accounts
 - no-show handling
+- research-service-driven booking outcome updates
 
 ### Review flow
 - review creation after consultation
