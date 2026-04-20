@@ -52,6 +52,9 @@ jobs:
             export GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}";
             export GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}";
             export GOOGLE_REDIRECT_URI="${{ secrets.GOOGLE_REDIRECT_URI }}";
+          
+            export TON_WORKER_BASE_URL="${{ secrets.TON_WORKER_BASE_URL }}";
+            export TON_WORKER_AUTH_TOKEN="${{ secrets.TON_WORKER_AUTH_TOKEN }}";
 
             chmod +x /opt/deploy.sh;
             bash /opt/deploy.sh;

@@ -1,3 +1,5 @@
+use std::env;
+
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub host: String,
@@ -7,6 +9,8 @@ pub struct AppConfig {
     pub google_client_id: String,
     pub google_client_secret: String,
     pub google_redirect_uri: String,
+    pub ton_worker_base_url: String,
+    pub ton_worker_auth_token: String,
 }
 
 impl AppConfig {
@@ -33,6 +37,12 @@ impl AppConfig {
         let google_redirect_uri = std::env::var("GOOGLE_REDIRECT_URI")
             .expect("GOOGLE_REDIRECT_URI must be set");
 
+        let ton_worker_base_url = env::var("TON_WORKER_BASE_URL")
+            .unwrap_or_else(|_| "http://ton-worker:8081".to_string());
+
+        let ton_worker_auth_token = env::var("TON_WORKER_AUTH_TOKEN")
+            .unwrap_or_default();
+
         Self {
             host,
             port,
@@ -41,6 +51,8 @@ impl AppConfig {
             google_client_id,
             google_client_secret,
             google_redirect_uri,
+            ton_worker_base_url,
+            ton_worker_auth_token,
         }
     }
 }

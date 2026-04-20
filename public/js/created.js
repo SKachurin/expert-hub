@@ -11,6 +11,18 @@ function setDebugStatus(text) {
     debugStatusEl.textContent = text || '';
 }
 
+function buildTelegramMiniAppPublicShareLink(slug) {
+    return `https://t.me/${BOT}?startapp=${encodeURIComponent(slug)}`;
+}
+
+function buildInternalExpertPublicLink(slug) {
+    return `/e/${encodeURIComponent(slug)}`;
+}
+
+function buildInternalExpertEditLink(slug) {
+    return `/e/${encodeURIComponent(slug)}/edit`;
+}
+
 function getSlugFromUrl() {
     const url = new URL(window.location.href);
     return (url.searchParams.get('slug') || '').trim();
@@ -24,9 +36,6 @@ async function copyText(value, successText) {
         console.error(err);
         setDebugStatus('Copy failed.');
     }
-}
-function buildTelegramMiniAppPublicLink(slug) {
-    return `https://t.me/${BOT}?startapp=${encodeURIComponent(slug)}`;
 }
 
 function initCreatedPage() {
@@ -42,17 +51,18 @@ function initCreatedPage() {
         return;
     }
 
-    const publicUrl = buildTelegramMiniAppPublicLink(slug);
-    const editUrl = `${window.location.origin}/e/${slug}/edit`;
+    const publicShareUrl = buildTelegramMiniAppPublicShareLink(slug);
+    const publicInternalUrl = buildInternalExpertPublicLink(slug);
+    const editInternalUrl = buildInternalExpertEditLink(slug);
 
-    publicUrlEl.textContent = publicUrl;
-    editUrlEl.textContent = editUrl;
+    publicUrlEl.textContent = publicShareUrl;
+    editUrlEl.textContent = editInternalUrl;
 
-    openPublicBtnEl.href = publicUrl;
-    openEditBtnEl.href = editUrl;
+    openPublicBtnEl.href = publicInternalUrl;
+    openEditBtnEl.href = editInternalUrl;
 
     copyPublicBtnEl.addEventListener('click', () => {
-        copyText(publicUrl, 'Public link copied.');
+        copyText(publicShareUrl, 'Public link copied.');
     });
 }
 

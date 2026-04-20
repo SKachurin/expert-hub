@@ -18,6 +18,10 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - TON_WORKER_BASE_URL=${TON_WORKER_BASE_URL}
+      - TON_WORKER_AUTH_TOKEN=${TON_WORKER_AUTH_TOKEN}
+    networks:
+      - expert-hub-network
     mem_limit: 512m
     cpus: 1.0
     depends_on:
@@ -40,6 +44,8 @@ services:
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
       - ./scripts/init-prod.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - expert-hub-network
     mem_limit: 1G
     cpus: 1.0
     healthcheck:
@@ -59,3 +65,7 @@ services:
 
 volumes:
   postgres_data_prod:
+
+networks:
+  expert-hub-network:
+    name: expert-hub-network

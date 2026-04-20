@@ -6,6 +6,7 @@ import { BOT } from '/js/shared/app-config.js';
 
 const popularExpertsListEl = document.getElementById('popular-experts-list');
 const popularExpertsEmptyEl = document.getElementById('popular-experts-empty');
+const registerExpertBtnEl = document.getElementById('register-expert-btn');
 
 function getTelegramStartParam() {
     const url = new URL(window.location.href);
@@ -39,18 +40,44 @@ function maybeRedirectFromTelegramStartParam() {
     return true;
 }
 
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
+function isMiniAppContext() {
+    const tg = window.Telegram?.WebApp;
+
+    if (!tg) {
+        return false;
+    }
+
+    return Boolean(
+        (tg.initData && String(tg.initData).trim()) ||
+        (tg.initDataUnsafe && Object.keys(tg.initDataUnsafe).length > 0)
+    );
+}
+
+function buildTelegramMiniAppPublicShareLink(slug) {
+    return `https://t.me/${BOT}?startapp=${encodeURIComponent(slug)}`;
+}
+
+function buildInternalExpertPublicLink(slug) {
+    return `/e/${encodeURIComponent(slug)}`;
+}
+
+function buildExpertCardHref(slug) {
+    return isMiniAppContext()
+        ? buildInternalExpertPublicLink(slug)
+        : buildTelegramMiniAppPublicShareLink(slug);
+}
+
+function buildRegisterHref() {
+    return isMiniAppContext()
+        ? '/expert-new.html'
+        : `https://t.me/${BOT}?startapp=s`;
 }
 
 function getInitials(name) {
     const safe = String(name || '').trim();
-    if (!safe) return 'E';
+    if (!safe) {
+        return 'E';
+    }
 
     const parts = safe.split(/\s+/).filter(Boolean);
     if (parts.length === 1) {
@@ -65,6 +92,7 @@ function formatRating(value) {
     if (!Number.isFinite(num)) {
         return 'New';
     }
+
     return num.toFixed(1);
 }
 
@@ -73,9 +101,11 @@ function formatReviewsCount(value) {
     if (num <= 0) {
         return 'No reviews yet';
     }
+
     if (num === 1) {
         return '1 review';
     }
+
     return `${num} reviews`;
 }
 
@@ -96,7 +126,7 @@ function renderPopularExperts(items) {
     items.forEach((expert) => {
         const card = document.createElement('a');
         card.className = 'popular-expert-tile';
-        card.href = `https://t.me/${BOT}?startapp=${encodeURIComponent(expert.public_slug)}`;
+        card.href = buildExpertCardHref(expert.public_slug);
 
         const avatarWrap = document.createElement('div');
         avatarWrap.className = 'popular-expert-avatar-wrap';
@@ -127,7 +157,16 @@ function renderPopularExperts(items) {
 
         const rating = document.createElement('div');
         rating.className = 'popular-expert-rating';
-        rating.innerHTML = `<span class="popular-expert-star">★</span><span>${escapeHtml(formatRating(expert.expert_rating))}</span>`;
+
+        const star = document.createElement('span');
+        star.className = 'popular-expert-star';
+        star.textContent = '★';
+
+        const ratingValue = document.createElement('span');
+        ratingValue.textContent = formatRating(expert.expert_rating);
+
+        rating.appendChild(star);
+        rating.appendChild(ratingValue);
 
         const reviews = document.createElement('div');
         reviews.className = 'popular-expert-reviews';
@@ -174,6 +213,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (maybeRedirectFromTelegramStartParam()) {
         return;
+    }
+
+    if (registerExpertBtnEl) {
+        registerExpertBtnEl.href = buildRegisterHref();
     }
 
     loadPopularExperts();

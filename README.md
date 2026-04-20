@@ -1,8 +1,8 @@
 # Expert Hub
 
-Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web, PostgreSQL, SeaORM, static frontend pages, Telegram web auth / Mini App context, TON wallet connection, and Google Calendar OAuth integration.
+Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web, PostgreSQL, SeaORM, static frontend pages, Telegram web auth / Mini App context, TON wallet connection, Google Calendar OAuth integration, and a separate internal TON Worker for booking escrow preparation.
 
-The project is currently focused on **Phase 1: expert onboarding, public expert pages, and real availability display**.
+The project is currently focused on **Phase 1: expert onboarding, public expert pages, real availability display, and the next booking/payment foundation**.
 
 At this stage, the project already has:
 
@@ -14,6 +14,7 @@ At this stage, the project already has:
 - Telegram Mini App integration on frontend
 - shared Telegram identity resolver for Mini App + stored web auth fallback
 - TON wallet connection on frontend
+- separate TON Worker project for future booking escrow contract preparation
 - marketplace shell page
 - expert onboarding page
 - expert setup registration backend flow
@@ -54,10 +55,12 @@ Right now the real implemented direction is:
 11. public expert page loads real expert data
 12. public expert page calculates real free slots for the next 7-day period
 13. user can open the app through Telegram Mini App deep links:
-  - `startapp=s` → register
-  - `startapp={slug}` → expert public page
+- `startapp=s` → register
+- `startapp={slug}` → expert public page
 
-This means the project already has the backend and DB foundation for expert records and related structures, a working Phase 1 onboarding flow, and a real public availability view. Booking request flow, payment finalization, internal booking holds, session detection, and full review flow are still ahead.
+This means the project already has the backend and DB foundation for expert records and related structures, a working Phase 1 onboarding flow, and a real public availability view.
+
+Booking request flow, payment finalization, internal booking holds, session detection, and full review flow are still ahead.
 
 ---
 
@@ -86,6 +89,10 @@ This means the project already has the backend and DB foundation for expert reco
 - GitHub Actions deploy flow
 - separate dev and prod environments
 - reverse SSH tunnel in local dev for `dev.experthub.bar`
+
+### Internal services
+- TON Worker in a separate Docker container
+- future Telegram research / watcher service for controlled booking-call detection
 
 ---
 
@@ -280,6 +287,19 @@ The `calendar_connections` table already includes fields for:
 
 This means the DB is already wider than the current UI.
 
+### Important booking/payment fields already present in DB
+
+The current schema already has the base needed for booking/payment integration:
+
+- `payments.status`
+- `payments.contract_address`
+- `payments.transaction_ref`
+- `bookings.status`
+- `bookings.slot_start`
+- `bookings.slot_end`
+- `bookings.requested_by_telegram_id`
+- `bookings.requested_by_ton_wallet`
+
 ---
 
 ## Telegram auth logic
@@ -321,18 +341,58 @@ This split is important because Telegram auth hash verification must use the mat
 
 ---
 
-## TON wallet status
+## TON wallet and payment architecture
 
 Frontend already integrates TON Connect UI.
 
-Current behavior:
+Current wallet behavior:
 
 - user can connect wallet on expert onboarding page
 - connected wallet address is shown in UI
 - wallet address is included in expert registration payload
 - wallet can also be updated from the edit page flow
 
-At this stage wallet connection is still onboarding / profile-level only. Real payment flow and smart contract settlement logic are planned later.
+At this stage wallet connection is still onboarding / profile-level only. Real payment flow and smart contract settlement logic are planned next.
+
+The main app should not contain TON SDK / Blueprint contract mechanics directly. Those responsibilities belong to the separate TON Worker project.
+
+Main app responsibility:
+
+- create booking/payment drafts
+- call TON Worker over internal HTTP
+- store returned contract data
+- expose payment payload to frontend
+- verify payment/funding result
+- update booking/payment statuses
+- decide contract actions from booking state and Telegram watcher events
+
+TON Worker responsibility:
+
+- prepare per-booking escrow contract data
+- return `contract_address`, `state_init_boc`, and payment amount data
+- send contract action messages when instructed by the Rust backend
+
+The main Rust backend remains the source of truth for marketplace state. The TON Worker executes TON mechanics only.
+
+### Planned internal TON Worker integration
+
+The Rust backend should call the TON Worker through internal Docker networking:
+
+```env
+TON_WORKER_BASE_URL=http://ton-worker:8081
+TON_WORKER_AUTH_TOKEN=local-dev-token
+TON_CONTROLLER_WALLET=EQ...
+```
+
+Planned worker endpoints used by the main app:
+
+- `GET /health`
+- `POST /contracts/prepare-booking`
+- `POST /contracts/{contract_address}/action`
+
+These routes are internal service routes, not public browser-facing routes.
+
+Detailed TON Worker contract structure, API payloads, environment variables, and contract rules should live in the `ton-worker-experthub` README, not in this main README.
 
 ---
 
@@ -577,11 +637,13 @@ Major next steps still ahead of the current implementation:
 - expert approval / rejection flow
 
 ### Payment / TON contract flow
-- real payment creation
-- TON contract integration
-- payment locking
-- settlement / refund rules
-- contract outcome driven by booking status and Telegram research-service session events
+- booking/payment draft creation in Rust backend
+- internal Rust client for TON Worker
+- call TON Worker `POST /contracts/prepare-booking`
+- persist returned contract data on the payment record
+- return TON Connect payment payload to frontend
+- verify customer funding/deployment after wallet approval
+- map expert/session outcomes to TON Worker contract actions
 
 ### Telegram call detection direction
 
@@ -605,6 +667,7 @@ Planned flow:
 6. the watcher sends a system event back to Expert Hub
 7. Expert Hub stores the raw event in `telegram_call_events`
 8. booking and payment outcome are updated from that system event
+9. if needed, backend calls the TON Worker to finalize/refund the escrow contract
 
 #### Important rules
 - **Source of truth = research service event**
@@ -612,6 +675,7 @@ Planned flow:
 - watcher should remain in the call until outcome is decided
 - the project should **not** rely on “join and leave immediately” monitoring for payout logic
 - for marketplace scale, use a **pool of watcher Telegram accounts**, not one watcher for all overlapping sessions
+- TON Worker does not decide session outcome; it only executes the contract action requested by the backend
 
 #### Intended V1 outcome logic
 - both expected users detected in the controlled booking call within the allowed window → `completed`
@@ -703,3 +767,16 @@ Typical local startup:
 
 ```bash
 docker compose -f docker-compose.dev.yml --env-file .env.local up --build
+```
+
+---
+
+## Related service docs
+
+Detailed TON Worker implementation notes belong in the separate worker repository README:
+
+```text
+ton-worker-experthub/README.md
+```
+
+The main Expert Hub README should only describe how the Rust backend integrates with the worker.

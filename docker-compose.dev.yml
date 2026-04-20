@@ -16,6 +16,10 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI}
+      - TON_WORKER_BASE_URL=${TON_WORKER_BASE_URL}
+      - TON_WORKER_AUTH_TOKEN=${TON_WORKER_AUTH_TOKEN}
+    networks:
+      - expert-hub-network
     env_file:
       - .env.local
     volumes:
@@ -74,6 +78,8 @@ services:
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
       - ./scripts/init-dev.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - expert-hub-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app_user -d app_db"]
       interval: 5s
@@ -95,3 +101,7 @@ volumes:
   postgres_data_dev:
   cargo-cache:
   target-cache:
+
+networks:
+  expert-hub-network:
+    name: expert-hub-network
