@@ -31,7 +31,7 @@ function maybeRedirectFromTelegramStartParam() {
         return false;
     }
 
-    if (startParam === 's') {
+    if (startParam === 's' || startParam === 'expert_new') {
         window.location.replace('/expert-new.html');
         return true;
     }
@@ -41,16 +41,7 @@ function maybeRedirectFromTelegramStartParam() {
 }
 
 function isMiniAppContext() {
-    const tg = window.Telegram?.WebApp;
-
-    if (!tg) {
-        return false;
-    }
-
-    return Boolean(
-        (tg.initData && String(tg.initData).trim()) ||
-        (tg.initDataUnsafe && Object.keys(tg.initDataUnsafe).length > 0)
-    );
+    return !!window.Telegram?.WebApp;
 }
 
 function buildTelegramMiniAppPublicShareLink(slug) {
@@ -62,6 +53,10 @@ function buildInternalExpertPublicLink(slug) {
 }
 
 function buildExpertCardHref(slug) {
+    if (!slug || !String(slug).trim()) {
+        return '#';
+    }
+
     return isMiniAppContext()
         ? buildInternalExpertPublicLink(slug)
         : buildTelegramMiniAppPublicShareLink(slug);

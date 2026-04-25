@@ -1,72 +1,91 @@
 # Expert Hub
 
-Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web, PostgreSQL, SeaORM, static frontend pages, Telegram web auth / Mini App context, TON wallet connection, Google Calendar OAuth integration, and a separate internal TON Worker for booking escrow preparation.
+Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web, PostgreSQL, SeaORM, static frontend pages, Telegram Mini App auth, TON wallet connection, Google Calendar OAuth, real availability generation, and a separate internal TON Worker for booking escrow contract preparation.
 
-The project is currently focused on **Phase 1: expert onboarding, public expert pages, real availability display, and the next booking/payment foundation**.
+## Table of contents
 
-At this stage, the project already has:
+- [Current status](#current-status)
+- [Stack](#stack)
+- [Main pages](#main-pages)
+- [Current backend routes](#current-backend-routes)
+- [Database](#database)
+- [Booking statuses](#booking-statuses)
+- [Telegram auth and navigation logic](#telegram-auth-and-navigation-logic)
+- [Google Calendar logic](#google-calendar-logic)
+- [TON payment architecture](#ton-payment-architecture)
+- [Current TON booking/payment flow](#current-ton-bookingpayment-flow)
+- [TON Worker payload contract](#ton-worker-payload-contract)
+- [Current BookingEscrow contract logic](#current-bookingescrow-contract-logic)
+- [Telegram research / session detection direction](#telegram-research--session-detection-direction)
+- [Reviews](#reviews)
+- [Frontend structure](#frontend-structure)
+- [Dev / prod split](#dev--prod-split)
+- [Deployment](#deployment)
+- [Local development](#local-development)
+- [What is working now](#what-is-working-now)
+- [What is still ahead](#what-is-still-ahead)
+- [Related service docs](#related-service-docs)
+
+The current focus is:
+
+1. expert onboarding
+2. public expert pages
+3. real availability from Google Calendar
+4. booking request creation
+5. TON escrow preparation
+6. frontend TON Connect payment flow
+7. later: expert confirmation, session detection, settlement, and reviews
+
+The app is still not a full marketplace. It is now a working vertical slice around one public expert page and the beginning of the real booking/payment flow.
+
+---
+
+## Current status
+
+At this stage the project already has:
 
 - Rust backend with `actix-web`
 - PostgreSQL in Docker
 - SeaORM entities and migrations
 - health endpoint
+- Telegram Mini App integration
 - Telegram web auth verification endpoint
-- Telegram Mini App integration on frontend
-- shared Telegram identity resolver for Mini App + stored web auth fallback
-- TON wallet connection on frontend
-- separate TON Worker project for future booking escrow contract preparation
-- marketplace shell page
+- shared Telegram identity resolver for Mini App + stored fallback
+- dev/prod Telegram bot split
+- TON Connect UI on frontend
+- separate TON Worker container for escrow contract preparation
+- Google Calendar OAuth connection
+- Google Calendar free/busy checks
+- Google access-token refresh during availability fetch
 - expert onboarding page
-- expert setup registration backend flow
-- public slug support for experts
-- profile-created success page
-- expert public page
 - expert edit page
-- database tables for experts, calendar connections, bookings, payments, reviews, tags, categories, and sync events
-- environment split for dev and prod Telegram bot auth
-- Google OAuth credentials wired into runtime flow
-- working Google OAuth callback flow
-- frontend Google Calendar connection UI
-- selection of up to 2 calendars per Google connection
-- support for adding up to 5 calendar connection blocks in expert onboarding
-- real public availability generation from expert schedule settings
-- Google Calendar free/busy availability checks
-- Google access token refresh during availability fetch
-- Telegram Mini App deep-link routing using `startapp`
+- public expert page
+- marketplace shell page
+- popular experts list on homepage
+- real public availability generation
+- booking request creation from selected slot
+- payment draft creation
+- Rust → TON Worker prepare-booking integration
+- frontend receives contract address, StateInit, and TON amount
+- frontend attempts TON Connect transaction to deploy/fund the escrow contract
 
----
+Currently still not finished:
 
-## Current project stage
-
-The app is **not a full marketplace yet**.
-
-Right now the real implemented direction is:
-
-1. expert opens onboarding flow
-2. connects Telegram
-3. connects TON wallet
-4. fills expert profile fields
-5. connects Google Calendar
-6. selects calendars from Google account
-7. optionally adds more calendar connection blocks
-8. submits expert setup to backend
-9. backend creates or updates expert and related calendar connection rows
-10. backend generates and serves expert public/edit page routes based on `public_slug`
-11. public expert page loads real expert data
-12. public expert page calculates real free slots for the next 7-day period
-13. user can open the app through Telegram Mini App deep links:
-- `startapp=s` → register
-- `startapp={slug}` → expert public page
-
-This means the project already has the backend and DB foundation for expert records and related structures, a working Phase 1 onboarding flow, and a real public availability view.
-
-Booking request flow, payment finalization, internal booking holds, session detection, and full review flow are still ahead.
+- final successful wallet transaction approval is still being debugged
+- payment funding verification is not implemented yet
+- booking does not yet move to `funded` after on-chain confirmation
+- expert Telegram confirmation flow is not implemented yet
+- TON Worker contract actions are not yet wired into the full booking lifecycle
+- Telegram call watcher / research service is not implemented yet
+- review flow is not implemented yet
+- production Mini App navigation still needs final hardening/caching checks
 
 ---
 
 ## Stack
 
 ### Backend
+
 - Rust
 - Actix Web
 - SeaORM
@@ -80,684 +99,833 @@ Booking request flow, payment finalization, internal booking holds, session dete
 - Rust Decimal
 
 ### Frontend
-- Static HTML / CSS / JS
+
+- Static HTML / CSS / JavaScript
 - Telegram WebApp JS
 - TON Connect UI
 
 ### Infra
+
 - Docker / Docker Compose
 - GitHub Actions deploy flow
+- Nginx reverse proxy
 - separate dev and prod environments
 - reverse SSH tunnel in local dev for `dev.experthub.bar`
 
 ### Internal services
+
 - TON Worker in a separate Docker container
-- future Telegram research / watcher service for controlled booking-call detection
+- planned Telegram research / watcher service for controlled booking-call detection
 
 ---
 
-## Current main pages
+## Main pages
 
 ### `/`
+
 Marketplace shell page.
 
-This is currently the main Mini App entry page and the placeholder marketplace shell. It also acts as the Telegram Mini App launch router:
-- `startapp=s` redirects to expert registration
-- `startapp={slug}` redirects to the expert public page
+Current behavior:
+
+- loads popular bookable experts from backend
+- shows expert cards
+- in normal browser context, expert cards link to Telegram Mini App deep links
+- in Telegram Mini App context, expert cards should use internal `/e/{slug}` links
+- acts as Mini App launch router for Telegram `startapp` params
+
+Supported Telegram launch params:
+
+```text
+startapp=s           -> /expert-new.html
+startapp=expert_new  -> /expert-new.html
+startapp={slug}      -> /e/{slug}
+````
+
+Important: `expert_new` must not be treated as an expert slug.
 
 ### `/expert-new.html`
-Main expert onboarding page.
 
-This page currently handles:
+Expert onboarding page.
 
-- Telegram identity detection
-- Telegram web auth fallback
-- TON wallet connection
-- expert setup form
-- local draft storage
-- calendar provider selection
-- Google Calendar OAuth start / callback continuation
-- selecting up to 2 calendars from a Google account
-- multiple calendar connection blocks
-- expert registration request to backend
+Current behavior:
+
+* resolves Telegram identity
+* supports Telegram Mini App context
+* supports stored Telegram auth fallback
+* connects TON wallet
+* collects expert profile data
+* collects rate, currency, working days, working hours, durations
+* starts Google OAuth flow
+* lets user select calendars
+* supports multiple calendar connection blocks
+* submits expert setup to backend
+* backend creates or updates expert and calendar connection rows
 
 ### `/created.html?slug={public_slug}`
-Success page shown after expert creation.
 
-This page shows:
+Success page after expert creation.
 
-- Telegram Mini App public expert link
-- edit page link
-- next-step hints for the expert
+Current behavior:
+
+* shows public expert link
+* shows edit page link
+* gives next-step hints
 
 ### `/e/{slug}`
-Public expert page route.
 
-This page currently handles:
+Public expert page.
 
-- loading public expert profile data
-- showing hourly rate
-- showing allowed consultation durations
-- duration picker UI
-- real 7-day availability generation
-- previous / next 7-day navigation
-- owner-gated edit icon when Telegram identity resolves and matches the expert
+Current behavior:
+
+* loads public expert data by slug
+* shows expert name, username, bio, avatar, timezone
+* shows hourly rate
+* shows available session durations
+* defaults to the lowest allowed duration
+* calculates real availability for the selected duration
+* uses Google Calendar busy blocks as blockers
+* uses internal booking blockers
+* lets customer select a slot
+* shows derived session price from hourly rate and selected duration
+* starts booking/payment flow
+* owner sees edit button if Telegram identity matches expert owner
 
 ### `/e/{slug}/edit`
-Expert edit page route.
 
-This is the private editing page shell for a specific expert slug.
+Expert edit page.
 
-It currently supports:
+Current behavior:
 
-- Telegram identity resolution
-- loading editable expert data by slug
-- editing profile fields
-- editing rate / schedule / durations / visibility
-- viewing connected calendars
-- choosing the primary calendar
-- connecting additional Google calendars
-- saving updated expert profile settings
+* resolves Telegram identity
+* loads editable expert data
+* compares current Telegram identity with expert owner identity
+* allows owner to update profile fields
+* allows owner to update rate / schedule / duration / visibility fields
+* shows connected calendars
+* allows primary calendar selection
+* supports adding another Google calendar connection
+* supports TON wallet replacement flow
+
+Still needs hardening:
+
+* final owner mismatch behavior
+* stricter edit protection
+* cleaner unauthorized redirect / prompt
 
 ---
 
 ## Current backend routes
 
 ### Health
-- `GET /health`
 
-Basic health check used by deploy flow.
+```http
+GET /health
+```
 
 ### Telegram auth
-- `POST /tg-auth`
+
+```http
+POST /tg-auth
+```
 
 Verifies Telegram auth payload hash and returns verified Telegram user data.
 
 ### Wallet link
-- `POST /link-wallet`
 
-Currently placeholder-style endpoint for wallet linking flow.
+```http
+POST /link-wallet
+```
+
+Currently mostly placeholder-style wallet linking endpoint.
 
 ### Expert setup
-- `POST /expert-setup/register`
-- `POST /experts/upsert`
 
-Expert creation / update flow used during onboarding and service-level expert persistence.
+```http
+POST /expert-setup/register
+POST /experts/upsert
+```
+
+Used for onboarding and expert persistence.
 
 ### Google OAuth / calendar session
-- `GET /oauth/google/start`
-- `GET /oauth/google/callback`
-- `GET /google/calendars/session/{session_id}`
-- `POST /google/calendars/session/{session_id}/select`
 
-These routes handle Google OAuth redirect, temporary OAuth session storage, Google calendar list loading, and user calendar selection.
+```http
+GET  /oauth/google/start
+GET  /oauth/google/callback
+GET  /google/calendars/session/{session_id}
+POST /google/calendars/session/{session_id}/select
+```
 
-### Expert page / profile routes
-- `GET /e/{slug}`
-- `GET /e/{slug}/edit`
+These routes handle Google OAuth redirect, temporary OAuth session storage, Google calendar list loading, and calendar selection.
 
-These routes return the static page shells for public and edit expert pages.
+### Expert pages
 
-### Expert API routes
-The project now has working service-level expert API flow around:
+```http
+GET /e/{slug}
+GET /e/{slug}/edit
+```
 
-- public expert lookup by slug
-- edit expert lookup by slug
-- expert profile update by slug
-- public availability generation by slug and duration
+Serve static page shells for public and edit pages.
 
-Important public API route:
+### Expert API
 
-- `GET /api/experts/{slug}/public?offset_days={n}&duration_minutes={m}`
+```http
+GET /api/experts/popular?limit={n}
+GET /api/experts/{slug}/public?offset_days={n}&duration_minutes={m}
+GET /experts/{slug}/edit-data
+PATCH /experts/{slug}
+DELETE /experts/{slug}/calendar-connections/{connection_id}
+```
 
-This route now returns:
+Current public API response includes:
 
-- public expert profile data
-- real availability for the requested 7-day period
-- slots filtered by selected duration
+* public expert profile
+* real availability
+* reviews array
 
----
+### Booking API
 
-## Current database direction
+Current booking/payment foundation exists.
 
-The project already includes entities and migrations for the main marketplace foundation.
+Expected routes are handled through booking handlers and services.
 
-Important tables/entities currently present:
+Current flow:
 
-- `experts`
-- `calendar_connections`
-- `calendar_sync_events`
-- `bookings`
-- `payments`
-- `reviews`
-- `categories`
-- `expert_categories`
-- `tags`
-- `expert_tags`
-- `telegram_call_events`
+1. frontend sends selected expert slug, selected slot, duration, Telegram user, and customer TON wallet
+2. backend validates slot against real availability
+3. backend creates booking with status `requested`
+4. frontend calls begin-payment
+5. backend moves booking to `awaiting_payment`
+6. backend creates or updates payment row
+7. backend converts USD quote to TON when needed
+8. backend calls TON Worker `POST /contracts/prepare-booking`
+9. backend stores returned contract address / transaction reference
+10. backend returns payment payload to frontend
+11. frontend calls TON Connect `sendTransaction()`
 
-Not all of them are fully used yet in frontend flow, but the schema foundation is already in place for the marketplace MVP.
+Current limitation:
 
-### Important expert fields already present in DB
-
-The `experts` table already includes fields for:
-
-- Telegram identity
-- display name
-- bio
-- photo URL
-- TON wallet address
-- timezone
-- hourly rate
-- currency
-- working days
-- work start time
-- work end time
-- allowed session durations
-- minimum notice minutes
-- buffer before minutes
-- buffer after minutes
-- max days ahead
-- calendar conflict mode
-- booking target strategy
-- active flag
-- bookable flag
-- expert rating
-- reviews count
-- public slug
-
-### Important calendar connection fields already present in DB
-
-The `calendar_connections` table already includes fields for:
-
-- provider
-- connection label
-- primary / enabled flags
-- connection status
-- account email
-- provider account id
-- selected calendar id / name / timezone
-- selected scheduling URL / event type fields
-- access token / refresh token
-- token expiry
-- scopes JSON
-- provider metadata
-- sync cursor / last sync info
-- public link
-
-This means the DB is already wider than the current UI.
-
-### Important booking/payment fields already present in DB
-
-The current schema already has the base needed for booking/payment integration:
-
-- `payments.status`
-- `payments.contract_address`
-- `payments.transaction_ref`
-- `bookings.status`
-- `bookings.slot_start`
-- `bookings.slot_end`
-- `bookings.requested_by_telegram_id`
-- `bookings.requested_by_ton_wallet`
+* successful wallet approval and on-chain funding verification are not finished yet.
 
 ---
 
-## Telegram auth logic
+## Database
 
-The project supports two contexts.
+The current database foundation includes:
+
+* `experts`
+* `calendar_connections`
+* `calendar_sync_events`
+* `bookings`
+* `payments`
+* `reviews`
+* `categories`
+* `expert_categories`
+* `tags`
+* `expert_tags`
+* `telegram_call_events`
+
+### Important expert fields
+
+The `experts` table stores:
+
+* Telegram identity
+* display name
+* username
+* bio
+* photo URL
+* TON wallet address
+* timezone
+* hourly rate
+* currency
+* working days
+* work start time
+* work end time
+* allowed session durations
+* minimum notice minutes
+* buffer before minutes
+* buffer after minutes
+* max days ahead
+* calendar conflict mode
+* booking target strategy
+* active flag
+* bookable flag
+* expert rating
+* reviews count
+* public slug
+
+### Important booking fields
+
+The `bookings` table stores:
+
+* expert id
+* optional calendar connection id
+* requester Telegram identity
+* requester TON wallet
+* expert timezone
+* requested duration
+* hourly rate snapshot
+* quoted amount
+* currency
+* slot start / end
+* booking status
+* expert confirmation / rejection timestamps
+* payment deadline / hold expiry
+* external calendar sync fields
+* session tracking timestamps
+* outcome source
+* metadata JSON
+
+### Important payment fields
+
+The `payments` table stores:
+
+* booking id
+* expert id
+* customer Telegram id
+* amount
+* currency
+* status
+* customer TON wallet
+* expert TON wallet
+* contract address
+* transaction reference
+
+---
+
+## Booking statuses
+
+Current intended statuses:
+
+```text
+requested
+awaiting_payment
+funded
+waiting_for_session
+in_grace_period
+completed
+expert_no_show
+customer_no_show
+refunded
+review_open
+closed
+```
+
+Current implementation already uses the early booking/payment statuses:
+
+```text
+requested
+awaiting_payment
+```
+
+Current blocker statuses for availability:
+
+```text
+requested
+awaiting_payment
+funded
+waiting_for_session
+in_grace_period
+```
+
+Meaning:
+
+* `requested` — booking row created from selected slot
+* `awaiting_payment` — customer has started payment flow
+* `funded` — contract/payment is funded
+* `waiting_for_session` — booking is funded and waiting for scheduled time
+* `in_grace_period` — expert is present, waiting for customer
+* `completed` — consultation connection detected
+* `expert_no_show` — expert failed to connect
+* `customer_no_show` — customer failed to connect
+* `refunded` — contract returned money to customer
+* `review_open` — customer can leave review
+* `closed` — review submitted or review window expired
+
+---
+
+## Telegram auth and navigation logic
+
+The project supports two frontend contexts.
 
 ### 1. Telegram Mini App context
-If the page is opened in a real Telegram Mini App launch context, frontend can read Telegram user from:
 
-`window.Telegram.WebApp.initDataUnsafe.user`
+Frontend can read Telegram user from:
+
+```js
+window.Telegram.WebApp.initDataUnsafe.user
+```
 
 ### 2. Web / stored fallback context
-If Mini App user data is unavailable, frontend can fall back to a stored Telegram user resolved from earlier auth flow.
 
-Shared Telegram auth logic now includes:
+If Mini App user data is unavailable, frontend can fall back to stored Telegram user data from earlier auth flow.
 
-- Mini App user resolver
-- stored Telegram user resolver
-- shared `resolveTelegramUser()` helper
-- Telegram WebApp init helper
+Shared auth lives in:
 
-This means owner-gated UI can work in both Mini App and previously authenticated web contexts, but only if Telegram identity is available through one of those paths.
+```text
+public/js/shared/telegram-auth.js
+```
 
-### Telegram Mini App deep links
-The app now supports short Telegram launch links through `startapp`:
+Shared app config lives in:
 
-- `https://t.me/expert_hub_bot?startapp=s` → registration
-- `https://t.me/expert_hub_bot?startapp={slug}` → public expert page
+```text
+public/js/shared/app-config.js
+```
 
-The Mini App root page reads the launch parameter and internally redirects to the correct route.
+Current bot split:
 
-### Dev / prod bot split
-The project uses separate bot identities for dev and prod:
+```text
+dev bot:  @expert_hub_bot
+prod bot: @experthub_bbot
+```
 
-- dev bot: `@expert_hub_bot`
-- prod bot: `@experthub_bbot`
+The Mini App root page must route Telegram `startapp` params correctly:
 
-This split is important because Telegram auth hash verification must use the matching bot token on backend.
+```text
+s          -> /expert-new.html
+expert_new -> /expert-new.html
+{slug}     -> /e/{slug}
+```
+
+When already inside Telegram Mini App, expert card clicks should use internal app routes:
+
+```text
+/e/{slug}
+```
+
+When outside Telegram Mini App, public expert links should use Telegram deep links:
+
+```text
+https://t.me/{BOT}?startapp={slug}
+```
 
 ---
 
-## TON wallet and payment architecture
+## Google Calendar logic
 
-Frontend already integrates TON Connect UI.
+Calendar integration is real enough to power public availability.
 
-Current wallet behavior:
+Already implemented:
 
-- user can connect wallet on expert onboarding page
-- connected wallet address is shown in UI
-- wallet address is included in expert registration payload
-- wallet can also be updated from the edit page flow
+* Google OAuth redirect
+* Google account info loading
+* Google calendar list loading
+* calendar selection
+* saving selected calendars into `calendar_connections`
+* storing access token / refresh token
+* using Google free/busy API during availability generation
+* refreshing access token on expiry
+* using enabled calendars as busy blockers
 
-At this stage wallet connection is still onboarding / profile-level only. Real payment flow and smart contract settlement logic are planned next.
+Still not finished:
 
-The main app should not contain TON SDK / Blueprint contract mechanics directly. Those responsibilities belong to the separate TON Worker project.
+* durable Google OAuth session storage
+* durable background sync
+* advanced reconnect / reauth flow
+* custom calendar picker UI
+* use of `calendar_sync_events` as a real sync pipeline
+* Calendly integration
 
-Main app responsibility:
+Availability source of truth:
 
-- create booking/payment drafts
-- call TON Worker over internal HTTP
-- store returned contract data
-- expose payment payload to frontend
-- verify payment/funding result
-- update booking/payment statuses
-- decide contract actions from booking state and Telegram watcher events
+```text
+expert schedule settings
++ Google Calendar free/busy
++ internal active booking blockers
+```
 
-TON Worker responsibility:
+The app should not persist fake future slots as source of truth.
 
-- prepare per-booking escrow contract data
-- return `contract_address`, `state_init_boc`, and payment amount data
-- send contract action messages when instructed by the Rust backend
+---
 
-The main Rust backend remains the source of truth for marketplace state. The TON Worker executes TON mechanics only.
+## TON payment architecture
 
-### Planned internal TON Worker integration
+The main Rust app must not contain TON SDK / Blueprint mechanics directly.
 
-The Rust backend should call the TON Worker through internal Docker networking:
+### Main Rust backend owns
+
+* experts
+* customers
+* bookings
+* payments
+* Telegram identity
+* Google Calendar availability
+* session outcome decisions
+* database state
+* review flow
+* when to ask TON Worker to prepare or execute contract actions
+
+### TON Worker owns
+
+* loading compiled `BookingEscrow` contract artifact
+* preparing unique per-booking contract deployment data
+* returning deterministic contract address
+* returning serialized StateInit
+* returning total amount the wallet must send
+* sending controller/admin action messages to contracts when requested
+
+### Current internal worker URL
 
 ```env
 TON_WORKER_BASE_URL=http://ton-worker:8081
 TON_WORKER_AUTH_TOKEN=local-dev-token
-TON_CONTROLLER_WALLET=EQ...
 ```
 
-Planned worker endpoints used by the main app:
+### Current TON Worker endpoints
 
-- `GET /health`
-- `POST /contracts/prepare-booking`
-- `POST /contracts/{contract_address}/action`
+```http
+GET  /health
+POST /contracts/prepare-booking
+POST /contracts/{contract_address}/action
+```
 
-These routes are internal service routes, not public browser-facing routes.
-
-Detailed TON Worker contract structure, API payloads, environment variables, and contract rules should live in the `ton-worker-experthub` README, not in this main README.
-
----
-
-## Expert setup registration
-
-The current onboarding page collects and submits:
-
-- Telegram identity
-- display name
-- bio
-- timezone
-- hourly rate
-- currency
-- working days
-- work start time
-- work end time
-- allowed session durations
-- TON wallet address
-- one or more calendar connections
-- selected calendars per Google connection
-
-Backend registration flow creates or updates expert data and stores related calendar connection rows.
-
-The registration flow is working at MVP onboarding level for expert creation.
-
-### Current registration status
-Compared to earlier state, calendar connection persistence is now much more real in the working flow:
-
-- selected Google calendars are saved
-- provider-backed connection labels are saved
-- selected calendar names and timezones are saved
-- access token / refresh token can be used for real free/busy checks
-- connection rows can be marked as connected
-- public availability can use saved Google connections directly
-
-### Still not finished
-There are still important limitations:
-
-- Google OAuth session storage is still temporary backend runtime state
-- on backend restart, temporary Google OAuth session ids are lost
-- reconnect / reauth handling can still be improved
-- durable sync state and background calendar sync are not implemented yet
-- the registration/edit mapping still needs cleanup and hardening for production reliability
+The worker must stay internal. It should not be called directly from the browser.
 
 ---
 
-## Calendar status
+## Current TON booking/payment flow
 
-Calendar integration is now **real enough to power public availability**, but still not production-complete.
+Current implemented flow:
 
-### Already done
-- calendar connection entities and migrations exist
-- Google OAuth env wiring was added
-- real Google OAuth redirect flow is implemented
-- Google account info can be loaded after OAuth
-- Google calendar list can be loaded
-- user can select up to 2 calendars from a connected Google account
-- frontend can create multiple calendar connection blocks
-- frontend allows up to 5 calendar blocks
-- connected calendar names are shown in onboarding UI
-- expert registration sends selected Google session references to backend
-- expert registration creates corresponding `calendar_connections` rows in DB
-- public availability fetch now uses real Google free/busy API
-- access token refresh is handled during availability fetch
-- enabled Google calendars are used as blockers for slot calculation
+1. customer opens `/e/{slug}`
+2. customer selects duration
+3. customer selects available slot
+4. customer connects TON wallet
+5. frontend creates booking request
+6. Rust backend validates selected slot
+7. Rust backend creates `bookings` row with status `requested`
+8. frontend begins payment
+9. Rust backend verifies booking ownership by Telegram id
+10. Rust backend updates booking to `awaiting_payment`
+11. Rust backend creates or updates `payments` row with status `awaiting_payment`
+12. if booking currency is `USD`, backend fetches TON/USD rate and converts quote to TON
+13. backend builds TON Worker prepare payload
+14. backend calls `POST /contracts/prepare-booking`
+15. TON Worker prepares unique contract address and StateInit
+16. backend stores returned contract address / transaction reference
+17. backend returns payment data to frontend
+18. frontend calls TON Connect `sendTransaction()`
 
-### Still not finished
-- Google OAuth sessions are still temporary backend runtime state
-- there is no durable long-term background sync process yet
-- `calendar_sync_events` are not yet powering a real sync pipeline
-- Calendly is still placeholder only
-- connected calendar editing UX is still basic
-- calendar picker still uses a browser prompt instead of a custom modal/list UI
-- there is no advanced cache / sync optimization layer yet
+Current frontend TON Connect transaction shape:
 
-So calendar support is now **real for onboarding and public availability**, but not yet production-complete.
+```js
+await tonConnectUi.sendTransaction({
+    validUntil: Math.floor(Date.now() / 1000) + 300,
+    network: expectedChain,
+    messages: [
+        {
+            address: result.contract_address,
+            amount: result.amount_nano_ton,
+            stateInit: result.state_init_boc
+        }
+    ]
+});
+```
 
----
+When this succeeds, the customer wallet should deploy and fund the prepared contract.
 
-## Public expert page status
+Current issue:
 
-Public slug support exists and the public expert page is now real enough to demonstrate the expert-facing marketplace flow.
-
-Current public page behavior:
-
-- show public expert data
-- show hourly rate
-- show allowed consultation durations
-- show a duration picker
-- default to the lowest allowed duration
-- show real free slots for the selected duration
-- page through previous / next 7-day windows
-- do not expose names/details of busy calendar events
-- keep personal event data private
-- show owner-gated edit icon when current Telegram identity matches the expert
-
-### Availability logic currently implemented
-Public availability now applies:
-
-- working days
-- work start / end time
-- selected duration
-- minimum notice
-- max days ahead
-- buffer before / after
-- Google busy intervals
-- internal booking blockers
-
-This means slot generation is no longer fake placeholder data.
-
-### Current pricing display direction
-The expert stores an `hourly_rate`.
-
-Public page direction is now:
-
-- show base pricing as hourly rate
-- derive session price from selected duration later in booking / summary flow
-
-Example:
-- 30 min = half hourly rate
-- 60 min = full hourly rate
+* Telegram Wallet is still declining the transaction in the current test flow.
+* The returned contract address is expected to be a new deterministic contract address for that booking.
+* The app should send the transaction to that contract address with `stateInit`, not to the expert wallet directly.
+* The exact wallet rejection reason still needs debugging.
 
 ---
 
-## Edit expert page status
+## TON Worker payload contract
 
-Edit page is now beyond a shell and is a real profile-management page, though still incomplete.
+Current Rust → TON Worker prepare payload should use the worker’s expected request shape.
 
-Current implemented direction:
+Current target shape:
 
-- support Telegram identity resolution / connect flow
-- load expert data for the slug
-- compare current Telegram identity to expert owner identity
-- allow the owner to edit expert-controlled fields
-- save profile updates back to backend
-- show existing connected calendars
-- allow primary calendar selection
-- support adding more Google calendar connections
+```json
+{
+  "booking_id": 1,
+  "payment_id": 1,
+  "customer_telegram_id": 111111,
+  "expert_telegram_id": 222222,
+  "customer_wallet": "EQ...",
+  "expert_wallet": "EQ...",
+  "amount_nano_ton": "100000000",
+  "slot_start_unix": 1760000000,
+  "expert_confirmation_deadline_unix": 1760086400,
+  "session_outcome_deadline_unix": 1760090000
+}
+```
 
-### Fields currently meaningful on edit page
-Main expert-facing fields:
+Important:
 
-- display name
-- bio
-- hourly rate
-- currency
-- working days
-- work start time
-- work end time
-- allowed session durations
-- minimum notice minutes
-- buffer before minutes
-- buffer after minutes
-- max days ahead
-- active flag
-- available for calls / bookable flag
-- primary calendar selection
-- wallet replacement flow
+* Do not send old mixed fields if the worker currently expects `amount_nano_ton`.
+* If the worker schema expects `amount` + `currency`, then Rust DTO and worker DTO must be changed together.
+* Rust and worker DTOs must always match exactly.
 
-### Fields intentionally not for direct editing right now
-These should stay backend-controlled or hidden for now:
+Current response shape:
 
-- timezone
-  source of truth should come from calendar
-- calendar conflict mode
-- booking target strategy
-- tokens / secrets / raw provider metadata
-- review counters / rating snapshots
-- system sync fields
+```json
+{
+  "contract_address": "EQ...",
+  "state_init_boc": "te6cck...",
+  "amount_nano_ton": "250000000",
+  "recommended_gas_buffer_nano_ton": "150000000",
+  "total_deploy_value_nano_ton": "250000000"
+}
+```
 
-### Important note
-Ownership / mismatch handling still needs final hardening and redirect behavior cleanup. The intended direction is clear, but this is still not a finished production auth-guard flow.
+Meaning:
+
+* `contract_address` — deterministic address of the future booking escrow contract
+* `state_init_boc` — serialized TON StateInit
+* `amount_nano_ton` — total amount customer wallet should send
+* `recommended_gas_buffer_nano_ton` — deploy/gas buffer included in total
+* `total_deploy_value_nano_ton` — explicit total for readability
+
+---
+
+## Current BookingEscrow contract logic
+
+The current escrow contract is per booking.
+
+Stored data:
+
+```text
+amountNanoTon
+
+state
+fundedAtUnix
+finalizedAtUnix
+
+customerRatingForExpert
+expertRatingForCustomer
+
+parties:
+  customerWallet
+  expertWallet
+  controllerWallet
+
+meta:
+  bookingId
+  expertTelegramId
+  customerTelegramId
+  slotStartUnix
+  expertConfirmationDeadlineUnix
+  sessionOutcomeDeadlineUnix
+```
+
+Contract states:
+
+```text
+STATE_AWAITING_FUNDING = 0
+STATE_FUNDED_WAITING_EXPERT = 1
+STATE_WAITING_SESSION = 2
+STATE_PAID_TO_EXPERT = 3
+STATE_REFUNDED_TO_CUSTOMER = 4
+```
+
+Contract actions:
+
+```text
+expert_confirm
+expert_decline
+session_connected
+customer_no_show
+expert_no_show
+set_customer_rating
+set_expert_rating
+```
+
+Payout rules:
+
+```text
+expert_decline    -> refund customer
+expert_no_show    -> refund customer
+session_connected -> pay expert
+customer_no_show  -> pay expert
+```
+
+The TON Worker does not decide these outcomes. The backend decides the outcome and instructs the TON Worker.
+
+---
+
+## Telegram research / session detection direction
+
+The booking/session completion logic is planned around a Telegram research service.
+
+Source of truth:
+
+```text
+Telegram research service event
+```
+
+Manual claims must not override system events.
+
+Current planned V1 direction:
+
+* use a controlled Telegram conference/group call per booking
+* assign a Telethon watcher account to the booking
+* watcher joins as silent intermediary
+* watcher listens for Telegram MTProto participant updates
+* watcher detects expert/customer participation
+* watcher sends system event to Expert Hub
+* Expert Hub stores raw event in `telegram_call_events`
+* Expert Hub updates booking/payment outcome
+* Expert Hub calls TON Worker action if needed
+
+Intended outcome logic:
+
+```text
+both expected users detected -> completed
+expert absent                -> expert_no_show -> refund customer
+customer absent after grace  -> customer_no_show -> pay expert
+```
+
+Still pending:
+
+* build watcher service
+* test exact Telegram MTProto event flow
+* define final event names
+* connect watcher events to booking status transitions
+* connect final booking outcomes to TON Worker contract actions
+
+---
+
+## Reviews
+
+Reviews are planned but not finished.
+
+Planned rules:
+
+* one booking = one customer review
+* reviews open after `completed`, `expert_no_show`, or `customer_no_show`
+* system no-show tags are attached automatically
+* system tags cannot be removed manually
+* expert rating and review count are recalculated after review submission
 
 ---
 
 ## Frontend structure
 
-The frontend was already being refactored away from giant inline page scripts.
+Shared:
 
-Important current frontend structure includes:
+```text
+public/js/shared/app-config.js
+public/js/shared/dom-utils.js
+public/js/shared/telegram-auth.js
+```
 
-### Shared
-- `public/js/shared/app-config.js`
-- `public/js/shared/dom-utils.js`
-- `public/js/shared/telegram-auth.js`
+Index:
 
-### Index
-- `public/js/index.js`
+```text
+public/js/index.js
+```
 
-### Created page
-- `public/js/created.js`
+Created page:
 
-### Public expert page
-- `public/js/expert-public.js`
+```text
+public/js/created.js
+```
 
-### Expert onboarding
-- `public/js/expert-new/dom.js`
-- `public/js/expert-new/expert-draft.js`
-- `public/js/expert-new/calendar-draft.js`
-- `public/js/expert-new/ui.js`
-- `public/js/expert-new/calendar.js`
-- `public/js/expert-new/modals.js`
-- `public/js/expert-new/register.js`
-- `public/js/expert-new/index.js`
+Public expert page:
 
-### Expert edit page
-- `public/js/expert-edit/expert-edit.js`
+```text
+public/js/expert-public.js
+```
 
-This refactor direction is correct and should continue.
+Expert onboarding:
 
----
+```text
+public/js/expert-new/
+```
 
-## What is working now
+Expert edit:
 
-At this moment, the project can already demonstrate this realistic flow:
+```text
+public/js/expert-edit/
+```
 
-1. expert opens the app
-2. connects Telegram
-3. connects TON wallet
-4. fills schedule / rate / profile
-5. connects Google Calendar
-6. selects calendars
-7. submits setup
-8. receives a Telegram Mini App public profile link
-9. opens public expert page
-10. sees real availability for selected duration
-11. owner can reach the edit page from owner-gated controls
+Current important frontend logic:
 
-This is already much stronger than an HTML shell MVP.
+* `index.js` routes Telegram `startapp` params
+* `index.js` builds internal links inside Mini App and Telegram deep links outside Mini App
+* `expert-public.js` loads public expert profile and availability
+* `expert-public.js` handles slot selection, booking request, payment preparation, and TON Connect transaction
+* `app-config.js` controls dev/prod bot and TON network split
 
 ---
 
-## What is still ahead
+## Dev / prod split
 
-Major next steps still ahead of the current implementation:
+Dev domain:
 
-### Booking flow
-- slot click → booking intent
-- booking request record creation
-- booking confirmation UI
-- quote calculation from hourly rate and duration
-- expert approval / rejection flow
+```text
+dev.experthub.bar
+```
 
-### Payment / TON contract flow
-- booking/payment draft creation in Rust backend
-- internal Rust client for TON Worker
-- call TON Worker `POST /contracts/prepare-booking`
-- persist returned contract data on the payment record
-- return TON Connect payment payload to frontend
-- verify customer funding/deployment after wallet approval
-- map expert/session outcomes to TON Worker contract actions
+Production domain:
 
-### Telegram call detection direction
+```text
+experthub.bar
+```
 
-The booking/session completion logic is planned around a **Telegram research service** that acts as the system source of truth for consultation connection events.
+Dev bot:
 
-For V1, the project should **not** rely on detecting a private 1-to-1 Telegram call between expert and customer from outside the call. That is not considered a safe or reliable foundation for payment settlement.
+```text
+@expert_hub_bot
+```
 
-#### Chosen V1 direction
-Use a **controlled Telegram conference/group call per booking**.
+Prod bot:
 
-Planned flow:
+```text
+@experthub_bbot
+```
 
-1. a booking reaches the funded / waiting-for-session stage
-2. a dedicated **Telethon watcher account** is assigned to that booking
-3. the watcher joins the booking call as a silent intermediary
-4. the watcher listens for Telegram MTProto participant updates
-5. the watcher detects:
-  - expert joined
-  - customer joined
-  - participant source IDs / active participant state
-6. the watcher sends a system event back to Expert Hub
-7. Expert Hub stores the raw event in `telegram_call_events`
-8. booking and payment outcome are updated from that system event
-9. if needed, backend calls the TON Worker to finalize/refund the escrow contract
+TON network split:
 
-#### Important rules
-- **Source of truth = research service event**
-- manual claims do not override the system event
-- watcher should remain in the call until outcome is decided
-- the project should **not** rely on “join and leave immediately” monitoring for payout logic
-- for marketplace scale, use a **pool of watcher Telegram accounts**, not one watcher for all overlapping sessions
-- TON Worker does not decide session outcome; it only executes the contract action requested by the backend
+```text
+dev  -> TESTNET
+prod -> MAINNET
+```
 
-#### Intended V1 outcome logic
-- both expected users detected in the controlled booking call within the allowed window → `completed`
-- expert absent → `expert_no_show`
-- customer absent after grace period → `customer_no_show` / `in_grace_period` flow, depending on the final backend transition rules
+Important:
 
-#### Why this fits the current project
-This direction matches the current backend / schema foundation:
-
-- `telegram_call_events` already exists for raw Telegram call research / detection events
-- the broader project direction already assumes that the research service decides session outcome
-
-#### Still pending
-- build and test the Telethon watcher container
-- confirm the exact MTProto event flow in real Telegram conference sessions
-- define the final event names written into `telegram_call_events`
-- connect those events to booking status transitions and TON smart-contract settlement rules
-
-### Session / consultation lifecycle
-- internal booking holds
-- confirmed booking state transitions
-- session outcome tracking
-- controlled Telegram conference-call detection via Telethon watcher accounts
-- no-show handling
-- research-service-driven booking outcome updates
-
-### Review flow
-- review creation after consultation
-- review visibility rules
-- system-generated no-show tags
-- rating recalculation
-
-### Calendar hardening
-- durable provider token persistence hardening
-- reconnect handling
-- background sync strategy
-- proper use of `calendar_sync_events`
-- better multi-calendar UX
-
-### Auth hardening
-- final owner mismatch redirect logic
-- stricter edit-page owner enforcement
-- clearer Telegram auth prompts for protected actions
-
-### Marketplace layer
-- real expert list
-- category browsing
-- search
-- featured experts
-- ranking / discovery
+* bot username and bot token must match the environment
+* Telegram auth hash verification depends on the correct bot token
+* Mini App links must use the correct bot for the domain
+* frontend cache-busting query strings must be bumped after JS changes
 
 ---
 
-## Current development environment
+## Deployment
 
-### Dev app
-The dev app runs locally on:
+Production uses:
 
-- `127.0.0.1:8080`
+```text
+docker-compose.prod.yml
+Dockerfile.prod
+GitHub Actions deploy flow
+Nginx reverse proxy
+```
 
-### Dev tunnel
-The project uses a reverse SSH tunnel container so the remote dev domain can reach local app port:
+Current useful checks:
 
-- remote target: `root@108.181.246.49`
-- reverse mapping: `18080 -> host.docker.internal:8080`
+```bash
+docker ps
+docker logs -f expert-hub-app-1
+curl -i https://experthub.bar/
+curl -i https://experthub.bar/e/sergei-rz
+curl -i 'https://experthub.bar/api/experts/sergei-rz/public?offset_days=0'
+curl -s https://experthub.bar/js/index.js | grep -n "startapp\|BOT\|public_slug\|href\|/e/"
+curl -s https://experthub.bar/js/shared/app-config.js
+```
 
-This is what makes `dev.experthub.bar` work against the local machine during dev.
+If `/api/experts/popular` works but clicking the expert does not load the public page, check:
 
-### Important dev consequence
-If a route works on:
-
-`http://127.0.0.1:8080/...`
-
-but not on:
-
-`https://dev.experthub.bar/...`
-
-then the problem is often outside Rust app code, usually one of:
-
-- Nginx route handling
-- tunnel path forwarding expectation
-- static files catching route before dynamic handler
+* `public/js/index.js`
+* `public/js/shared/app-config.js`
+* Telegram `startapp` routing
+* cache-busting query string in `public/index.html`
+* whether `expert_new` is accidentally treated as a slug
+* whether Mini App context is detected too strictly
 
 ---
 
@@ -769,6 +937,67 @@ Typical local startup:
 docker compose -f docker-compose.dev.yml --env-file .env.local up --build
 ```
 
+Typical prod startup:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+```
+
+Run app logs:
+
+```bash
+docker logs -f expert-hub-app-1
+```
+
+Run TON Worker logs:
+
+```bash
+docker logs -f ton-worker-experthub
+```
+
+---
+
+## What is working now
+
+The project can currently demonstrate:
+
+1. expert opens onboarding
+2. expert connects Telegram
+3. expert connects TON wallet
+4. expert fills profile, rate, schedule, durations
+5. expert connects Google Calendar
+6. expert selects calendars
+7. backend saves expert and calendar connections
+8. public expert page is generated by slug
+9. public page loads expert data
+10. public page shows real availability
+11. customer selects slot
+12. backend creates booking request
+13. backend creates payment draft
+14. backend calls TON Worker
+15. TON Worker returns deterministic escrow contract address and StateInit
+16. frontend attempts TON Connect escrow deployment/funding transaction
+
+---
+
+## What is still ahead
+
+Next priorities:
+
+1. Fix Telegram Wallet transaction rejection.
+2. Confirm correct contract address / StateInit / amount format.
+3. Add payment funding verification after successful wallet approval.
+4. Move payment to `funded`.
+5. Move booking to `funded` / `waiting_for_session`.
+6. Add expert confirmation flow through Telegram bot.
+7. Wire `expert_confirm` and `expert_decline` contract actions.
+8. Add Telegram watcher service.
+9. Store watcher events in `telegram_call_events`.
+10. Apply final session outcomes.
+11. Wire `session_connected`, `customer_no_show`, and `expert_no_show` contract actions.
+12. Add review flow.
+13. Add marketplace discovery later.
+
 ---
 
 ## Related service docs
@@ -779,4 +1008,4 @@ Detailed TON Worker implementation notes belong in the separate worker repositor
 ton-worker-experthub/README.md
 ```
 
-The main Expert Hub README should only describe how the Rust backend integrates with the worker.
+The main Expert Hub README should describe only how the Rust backend integrates with the worker.
