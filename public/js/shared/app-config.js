@@ -1,6 +1,10 @@
 export const APP_HOST = window.location.hostname;
 export const PUBLIC_ORIGIN = window.location.origin;
-export const IS_DEV = APP_HOST === 'dev.experthub.bar';
+export const IS_DEV =
+    APP_HOST === 'localhost' ||
+    APP_HOST === '127.0.0.1' ||
+    APP_HOST === 'dev.experthub.bar';
+export const TON_APP_NETWORK = IS_DEV ? 'TESTNET' : 'MAINNET';
 
 export const BOT = IS_DEV ? 'expert_hub_bot' : 'experthub_bbot';
 export const TG_APP_LINK = `https://t.me/${BOT}?startapp=expert_new`;

@@ -27,6 +27,10 @@ impl TonWorkerClient {
         &self,
         payload: &CreateBookingContractRequest,
     ) -> Result<CreateBookingContractResponse, String> {
+        println!(
+            "TON_WORKER_REQUEST create-booking-contract: {}",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        );
         let url = format!("{}/contracts/prepare-booking", self.base_url);
 
         let response = self.http

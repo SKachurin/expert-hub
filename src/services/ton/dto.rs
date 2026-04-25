@@ -8,7 +8,10 @@ pub struct CreateBookingContractRequest {
     pub expert_telegram_id: i64,
     pub customer_wallet: String,
     pub expert_wallet: String,
-    pub amount_nano_ton: String,
+
+    pub amount: String,
+    pub currency: String,
+
     pub slot_start_unix: i64,
     pub expert_confirmation_deadline_unix: i64,
     pub session_outcome_deadline_unix: i64,

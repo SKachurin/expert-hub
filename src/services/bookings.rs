@@ -11,6 +11,11 @@ use crate::{
     services::{
         availability::get_public_availability,
         experts::get_public_expert_by_slug,
+        ton::{
+            client::TonWorkerClient,
+            controller::TonController,
+            rates::{convert_usd_to_ton_amount, fetch_ton_usd_rate},
+        },
     },
     state::AppState,
 };
@@ -67,6 +72,12 @@ pub struct BookingSummaryResponse {
     pub expert_slug: String,
     pub status: String,
     pub payment_status: Option<String>,
+
+    pub payment_id: Option<i64>,
+    pub contract_address: Option<String>,
+    pub state_init_boc: Option<String>,
+    pub amount_nano_ton: Option<String>,
+
     pub requested_duration_minutes: i32,
     pub amount_quoted: Decimal,
     pub currency: String,
@@ -74,6 +85,19 @@ pub struct BookingSummaryResponse {
     pub slot_end: String,
     pub payment_required_by: Option<String>,
     pub expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BeginPaymentResponse {
+    pub booking_id: i64,
+    pub payment_id: i64,
+    pub contract_address: String,
+    pub destination_address: String,
+    pub state_init_boc: String,
+    pub amount_nano_ton: String,
+    pub recommended_gas_buffer_nano_ton: String,
+    pub total_deploy_value_nano_ton: String,
+    pub payment_status: String,
 }
 
 fn derive_amount(hourly_rate: Decimal, duration_minutes: i64) -> Result<Decimal, String> {
@@ -236,6 +260,12 @@ pub async fn create_booking_request(
         expert_slug: slug,
         status: booking.status,
         payment_status: None,
+
+        payment_id: None,
+        contract_address: None,
+        state_init_boc: None,
+        amount_nano_ton: None,
+
         requested_duration_minutes: booking.requested_duration_minutes,
         amount_quoted: booking.amount_quoted,
         currency: booking.currency,
@@ -250,7 +280,7 @@ pub async fn begin_booking_payment(
     state: &AppState,
     booking_id: i64,
     body: BeginPaymentRequest,
-) -> Result<BookingSummaryResponse, String> {
+) -> Result<BeginPaymentResponse, String> {
     let booking = bookings::Entity::find_by_id(booking_id)
         .one(&state.db)
         .await
@@ -261,8 +291,13 @@ pub async fn begin_booking_payment(
         return Err("telegram user does not own this booking".to_string());
     }
 
-    if booking.status != BOOKING_STATUS_REQUESTED && booking.status != BOOKING_STATUS_AWAITING_PAYMENT {
-        return Err(format!("booking cannot move to payment from status {}", booking.status));
+    if booking.status != BOOKING_STATUS_REQUESTED
+        && booking.status != BOOKING_STATUS_AWAITING_PAYMENT
+    {
+        return Err(format!(
+            "booking cannot move to payment from status {}",
+            booking.status
+        ));
     }
 
     let expert = experts::Entity::find_by_id(booking.expert_id)
@@ -270,6 +305,14 @@ pub async fn begin_booking_payment(
         .await
         .map_err(|e| format!("failed to load expert: {e}"))?
         .ok_or_else(|| "expert not found".to_string())?;
+
+    if expert.ton_wallet_address.trim().is_empty() {
+        return Err("expert TON wallet is missing".to_string());
+    }
+
+    if body.ton_wallet_customer.trim().is_empty() {
+        return Err("customer TON wallet is missing".to_string());
+    }
 
     let now = Utc::now().fixed_offset();
 
@@ -289,17 +332,18 @@ pub async fn begin_booking_payment(
         .await
         .map_err(|e| format!("failed to query payment: {e}"))?;
 
-    let payment_status = if let Some(payment) = existing_payment {
+    let saved_payment = if let Some(payment) = existing_payment {
         let mut payment_model: payments::ActiveModel = payment.into();
+
         payment_model.status = Set(PAYMENT_STATUS_AWAITING_PAYMENT.to_string());
         payment_model.ton_wallet_customer = Set(Some(body.ton_wallet_customer.clone()));
         payment_model.ton_wallet_expert = Set(Some(expert.ton_wallet_address.clone()));
         payment_model.updated_at = Set(now);
+
         payment_model
             .update(&state.db)
             .await
             .map_err(|e| format!("failed to update payment: {e}"))?
-            .status
     } else {
         payments::ActiveModel {
             booking_id: Set(saved_booking.id),
@@ -309,7 +353,7 @@ pub async fn begin_booking_payment(
             currency: Set(saved_booking.currency.clone()),
             status: Set(PAYMENT_STATUS_AWAITING_PAYMENT.to_string()),
             ton_wallet_customer: Set(Some(body.ton_wallet_customer.clone())),
-            ton_wallet_expert: Set(Some(expert.ton_wallet_address)),
+            ton_wallet_expert: Set(Some(expert.ton_wallet_address.clone())),
             contract_address: Set(None),
             transaction_ref: Set(None),
             created_at: Set(now),
@@ -319,27 +363,69 @@ pub async fn begin_booking_payment(
         .insert(&state.db)
         .await
         .map_err(|e| format!("failed to create payment: {e}"))?
-        .status
     };
 
-    Ok(BookingSummaryResponse {
-        id: saved_booking.id,
-        expert_id: saved_booking.expert_id,
-        expert_slug: saved_booking
-            .metadata
-            .as_ref()
-            .and_then(|v| v.get("public_slug"))
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string(),
-        status: saved_booking.status,
-        payment_status: Some(payment_status),
-        requested_duration_minutes: saved_booking.requested_duration_minutes,
-        amount_quoted: saved_booking.amount_quoted,
-        currency: saved_booking.currency,
-        slot_start: saved_booking.slot_start.to_rfc3339(),
-        slot_end: saved_booking.slot_end.to_rfc3339(),
-        payment_required_by: saved_booking.payment_required_by.map(|v| v.to_rfc3339()),
-        expires_at: saved_booking.expires_at.to_rfc3339(),
+    let escrow_amount_ton = if saved_booking.currency == "USD" {
+        let ton_usd_rate = fetch_ton_usd_rate().await?;
+        convert_usd_to_ton_amount(saved_booking.amount_quoted, ton_usd_rate)?
+    } else if saved_booking.currency == "TON" {
+        saved_booking.amount_quoted
+    } else {
+        return Err(format!(
+            "unsupported booking currency for TON payment: {}",
+            saved_booking.currency
+        ));
+    };
+
+    let escrow_amount_ton = escrow_amount_ton.round_dp(9);
+
+    if escrow_amount_ton <= Decimal::ZERO {
+        return Err("calculated escrow amount in TON must be positive".to_string());
+    }
+
+    let escrow_amount_ton_string = escrow_amount_ton.normalize().to_string();
+
+    let ton_client = TonWorkerClient::new(
+        state.config.ton_worker_base_url.clone(),
+        state.config.ton_worker_auth_token.clone(),
+    );
+
+    let ton_controller = TonController::new(ton_client);
+
+    let prepare_payload = TonController::build_create_booking_contract_request(
+        &saved_booking,
+        &saved_payment,
+        &expert,
+        escrow_amount_ton_string,
+        "TON".to_string(),
+    )?;
+
+    let contract = ton_controller
+        .create_booking_contract(prepare_payload)
+        .await?;
+
+    let mut payment_model: payments::ActiveModel = saved_payment.clone().into();
+    payment_model.contract_address = Set(Some(contract.contract_address.clone()));
+    payment_model.transaction_ref = Set(Some(format!(
+        "prepared:{}",
+        contract.contract_address
+    )));
+    payment_model.updated_at = Set(now);
+
+    let updated_payment = payment_model
+        .update(&state.db)
+        .await
+        .map_err(|e| format!("failed to store TON contract data: {e}"))?;
+
+    Ok(BeginPaymentResponse {
+        booking_id: saved_booking.id,
+        payment_id: updated_payment.id,
+        contract_address: contract.contract_address.clone(),
+        destination_address: contract.contract_address,
+        state_init_boc: contract.state_init_boc,
+        amount_nano_ton: contract.amount_nano_ton,
+        recommended_gas_buffer_nano_ton: contract.recommended_gas_buffer_nano_ton,
+        total_deploy_value_nano_ton: contract.total_deploy_value_nano_ton,
+        payment_status: updated_payment.status,
     })
 }

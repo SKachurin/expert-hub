@@ -28,38 +28,58 @@ impl TonController {
         booking: &bookings::Model,
         payment: &payments::Model,
         expert: &experts::Model,
-        amount_nano_ton: String,
-    ) -> Result<CreateBookingContractRequest, String> {
-        let customer_wallet = booking
-            .requested_by_ton_wallet
-            .clone()
-            .ok_or_else(|| "customer TON wallet is missing on booking".to_string())?;
+        amount: String,
+        currency: String,
+    )-> Result<CreateBookingContractRequest, String> {
+        fn map_wallet_for_ton_testnet(wallet: &str) -> String {
+            const REAL_CUSTOMER_TEST_WALLET: &str =
+                "UQDiZ93j19DQJElNstmAT9mWu72xtFqXfKx_o6OY_JwwjW9l";
+            const TESTNET_CUSTOMER_WALLET: &str =
+                "0QDiZ93j19DQJElNstmAT9mWu72xtFqXfKx_o6OY_JwwjdTv";
 
-        let slot_start_unix = booking.slot_start.timestamp();
+            const REAL_EXPERT_TEST_WALLET: &str =
+                "UQB3C7AXeV5AFLFDq-RD-_gZNDfq8oNbhe4PuntHQNAY3xm9";
+            const TESTNET_EXPERT_WALLET: &str =
+                "0QB3C7AXeV5AFLFDq-RD-_gZNDfq8oNbhe4PuntHQNAY36I3";
 
-        let expert_confirmation_deadline_unix = Utc::now()
-            .checked_add_signed(Duration::minutes(15))
-            .ok_or_else(|| "failed to calculate expert confirmation deadline".to_string())?
-            .timestamp();
+            match wallet {
+                REAL_CUSTOMER_TEST_WALLET => TESTNET_CUSTOMER_WALLET.to_string(),
+                REAL_EXPERT_TEST_WALLET => TESTNET_EXPERT_WALLET.to_string(),
+                _ => wallet.to_string(),
+            }
+        }
 
-        let session_outcome_deadline_unix = booking
-            .slot_end
-            .checked_add_signed(Duration::minutes(10))
-            .ok_or_else(|| "failed to calculate session outcome deadline".to_string())?
-            .timestamp();
+         let customer_wallet = booking
+                .requested_by_ton_wallet
+                .clone()
+                .ok_or_else(|| "customer TON wallet is missing on booking".to_string())?;
 
-        Ok(CreateBookingContractRequest {
-            booking_id: booking.id,
-            payment_id: payment.id,
-            customer_telegram_id: booking.requested_by_telegram_id,
-            expert_telegram_id: expert.telegram_id,
-            customer_wallet,
-            expert_wallet: expert.ton_wallet_address.clone(),
-            amount_nano_ton,
-            slot_start_unix,
-            expert_confirmation_deadline_unix,
-            session_outcome_deadline_unix,
-        })
+            let slot_start_unix = booking.slot_start.timestamp();
+
+            let expert_confirmation_deadline_unix = Utc::now()
+                .checked_add_signed(Duration::minutes(15))
+                .ok_or_else(|| "failed to calculate expert confirmation deadline".to_string())?
+                .timestamp();
+
+            let session_outcome_deadline_unix = booking
+                .slot_end
+                .checked_add_signed(Duration::minutes(10))
+                .ok_or_else(|| "failed to calculate session outcome deadline".to_string())?
+                .timestamp();
+
+           Ok(CreateBookingContractRequest {
+               booking_id: booking.id,
+               payment_id: payment.id,
+               customer_telegram_id: booking.requested_by_telegram_id,
+               expert_telegram_id: expert.telegram_id,
+               customer_wallet,
+               expert_wallet: expert.ton_wallet_address.clone(),
+               amount,
+               currency,
+               slot_start_unix,
+               expert_confirmation_deadline_unix,
+               session_outcome_deadline_unix,
+           })
     }
 
     pub async fn create_booking_contract(

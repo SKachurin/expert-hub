@@ -3,44 +3,19 @@ import {
     resolveTelegramUser
 } from '/js/shared/telegram-auth.js';
 
-const debugStatusEl = document.getElementById('debug-status');
+import {
+    TON_APP_NETWORK,
+    BOT
+} from '/js/shared/app-config.js';
 
-const expertNameEl = document.getElementById('expert-name');
-const expertHeadlineEl = document.getElementById('expert-headline');
-const expertAvatarEl = document.getElementById('expert-avatar');
-const expertAvatarPlaceholderEl = document.getElementById('expert-avatar-placeholder');
-const expertUsernameEl = document.getElementById('expert-username');
-const expertTimezoneEl = document.getElementById('expert-timezone');
-const expertRatingEl = document.getElementById('expert-rating');
-const expertRateEl = document.getElementById('expert-rate');
-const expertDurationsEl = document.getElementById('expert-durations');
-const expertBioEl = document.getElementById('expert-bio');
+// Hardcoded for current payment testing.
+// TonConnect uses numeric chain IDs:
+// -3   = testnet
+// -239 = mainnet
+const ACTIVE_TON_NETWORK_LABEL = 'TESTNET';
+const ACTIVE_TON_CHAIN = '-3';
 
-const slotsRangeLabelEl = document.getElementById('slots-range-label');
-const slotsListEl = document.getElementById('slots-list');
-const slotsEmptyEl = document.getElementById('slots-empty');
-const reviewsListEl = document.getElementById('reviews-list');
-const reviewsEmptyEl = document.getElementById('reviews-empty');
-
-const prevPeriodBtnEl = document.getElementById('prev-period-btn');
-const nextPeriodBtnEl = document.getElementById('next-period-btn');
-
-const durationPickerWrapEl = document.getElementById('duration-picker-wrap');
-const durationPickerEl = document.getElementById('duration-picker');
-const editProfileBtnEl = document.getElementById('edit-profile-btn');
-
-const bookBtnEl = document.getElementById('book-btn');
-const selectedSlotSummaryEl = document.getElementById('selected-slot-summary');
-
-const telegramRequiredModalEl = document.getElementById('telegram-required-modal');
-const walletRequiredModalEl = document.getElementById('wallet-required-modal');
-const bookingConfirmModalEl = document.getElementById('booking-confirm-modal');
-
-const telegramRequiredCloseEl = document.getElementById('telegram-required-close');
-const walletRequiredCloseEl = document.getElementById('wallet-required-close');
-const bookingConfirmCloseEl = document.getElementById('booking-confirm-close');
-const bookingConfirmSubmitEl = document.getElementById('booking-confirm-submit');
-const bookingConfirmTextEl = document.getElementById('booking-confirm-text');
+let els = {};
 
 let selectedSlot = null;
 let currentExpert = null;
@@ -55,6 +30,115 @@ let expertAllowedDurations = [];
 let currentPageRequestController = null;
 let currentPageRequestId = 0;
 
+function bindDom() {
+    els = {
+        debugStatus: document.getElementById('debug-status'),
+
+        expertName: document.getElementById('expert-name'),
+        expertHeadline: document.getElementById('expert-headline'),
+        expertAvatar: document.getElementById('expert-avatar'),
+        expertAvatarPlaceholder: document.getElementById('expert-avatar-placeholder'),
+        expertUsername: document.getElementById('expert-username'),
+        expertTimezone: document.getElementById('expert-timezone'),
+        expertRating: document.getElementById('expert-rating'),
+        expertRate: document.getElementById('expert-rate'),
+        expertDurations: document.getElementById('expert-durations'),
+        expertBio: document.getElementById('expert-bio'),
+
+        slotsRangeLabel: document.getElementById('slots-range-label'),
+        slotsList: document.getElementById('slots-list'),
+        slotsEmpty: document.getElementById('slots-empty'),
+
+        reviewsList: document.getElementById('reviews-list'),
+        reviewsEmpty: document.getElementById('reviews-empty'),
+
+        prevPeriodBtn: document.getElementById('prev-period-btn'),
+        nextPeriodBtn: document.getElementById('next-period-btn'),
+
+        durationPickerWrap: document.getElementById('duration-picker-wrap'),
+        durationPicker: document.getElementById('duration-picker'),
+
+        editProfileBtn: document.getElementById('edit-profile-btn'),
+
+        bookBtn: document.getElementById('book-btn'),
+        selectedSlotSummary: document.getElementById('selected-slot-summary'),
+
+        telegramRequiredModal: document.getElementById('telegram-required-modal'),
+        walletRequiredModal: document.getElementById('wallet-required-modal'),
+        bookingConfirmModal: document.getElementById('booking-confirm-modal'),
+
+        telegramRequiredClose: document.getElementById('telegram-required-close'),
+        walletRequiredClose: document.getElementById('wallet-required-close'),
+        bookingConfirmClose: document.getElementById('booking-confirm-close'),
+        bookingConfirmSubmit: document.getElementById('booking-confirm-submit'),
+        bookingConfirmText: document.getElementById('booking-confirm-text')
+    };
+}
+
+function ensureDebugPanel() {
+    let panel = document.getElementById('booking-debug-panel');
+
+    if (!panel) {
+        panel = document.createElement('pre');
+        panel.id = 'booking-debug-panel';
+        document.body.appendChild(panel);
+    }
+
+
+    return panel;
+}
+
+function safeJson(value) {
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch (error) {
+        return String(value);
+    }
+}
+
+function debugBooking(label, data = null) {
+    const panel = ensureDebugPanel();
+
+    const line = `[${new Date().toISOString()}] ${label}` +
+        (data ? `\n${safeJson(data)}` : '');
+
+    panel.textContent = `${line}\n\n${panel.textContent || ''}`;
+    console.log(label, data);
+}
+
+function setDebugStatus(text) {
+    if (els.debugStatus) {
+        els.debugStatus.textContent = text || '';
+    }
+
+    if (text) {
+        debugBooking(`STATUS: ${text}`);
+    }
+}
+
+function installGlobalErrorLogging() {
+    window.addEventListener('error', (event) => {
+        debugBooking('window.error', {
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            error: event.error?.stack || String(event.error || '')
+        });
+
+        setDebugStatus(event.message || 'JavaScript error.');
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        debugBooking('window.unhandledrejection', {
+            reason: event.reason?.message || String(event.reason),
+            stack: event.reason?.stack || null
+        });
+
+        setDebugStatus(event.reason?.message || 'Unhandled promise rejection.');
+    });
+}
+
 function cancelCurrentPageRequest() {
     if (currentPageRequestController) {
         currentPageRequestController.abort();
@@ -63,10 +147,10 @@ function cancelCurrentPageRequest() {
 }
 
 function updatePeriodButtonsState(isLoading = false) {
-    if (!prevPeriodBtnEl || !nextPeriodBtnEl) return;
+    if (!els.prevPeriodBtn || !els.nextPeriodBtn) return;
 
-    prevPeriodBtnEl.disabled = isLoading || currentOffsetDays <= 0;
-    nextPeriodBtnEl.disabled = isLoading;
+    els.prevPeriodBtn.disabled = isLoading || currentOffsetDays <= 0;
+    els.nextPeriodBtn.disabled = isLoading;
 }
 
 function syncSelectedSlotWithPayload(payload) {
@@ -85,7 +169,10 @@ function syncSelectedSlotWithPayload(payload) {
                 break;
             }
         }
-        if (stillExists) break;
+
+        if (stillExists) {
+            break;
+        }
     }
 
     if (!stillExists) {
@@ -93,15 +180,13 @@ function syncSelectedSlotWithPayload(payload) {
     }
 }
 
-function setDebugStatus(text) {
-    debugStatusEl.textContent = text || '';
-}
-
 function getSlugFromPath() {
     const parts = window.location.pathname.split('/').filter(Boolean);
+
     if (parts.length >= 2 && parts[0] === 'e') {
         return parts[1];
     }
+
     return '';
 }
 
@@ -121,38 +206,51 @@ function formatDateRangeLabel(startDate, endDate) {
     return `${startDate} → ${endDate}`;
 }
 
+function normalizeDurations(durations) {
+    if (!Array.isArray(durations)) {
+        return [];
+    }
+
+    return durations
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+        .sort((a, b) => a - b);
+}
+
 function renderExpert(data) {
-    expertNameEl.textContent = data.display_name || 'Expert';
-    expertHeadlineEl.textContent = data.telegram_bio || 'Expert profile';
-    expertUsernameEl.textContent = data.username ? `@${data.username}` : 'No public username';
-    expertTimezoneEl.textContent = `Timezone: ${data.timezone}`;
-    expertRatingEl.textContent = data.reviews_count > 0
+    els.expertName.textContent = data.display_name || 'Expert';
+    els.expertHeadline.textContent = data.telegram_bio || 'Expert profile';
+    els.expertUsername.textContent = data.username ? `@${data.username}` : 'No public username';
+    els.expertTimezone.textContent = `Timezone: ${data.timezone}`;
+    els.expertRating.textContent = data.reviews_count > 0
         ? `${data.expert_rating}/5 · ${data.reviews_count} review(s)`
         : 'No reviews yet';
 
-    expertRateEl.textContent = formatMoney(data.hourly_rate, data.currency);
-    expertDurationsEl.textContent = formatDurations(data.allowed_session_durations);
-    expertBioEl.textContent = data.telegram_bio || 'No description yet.';
+    els.expertRate.textContent = formatMoney(data.hourly_rate, data.currency);
+    els.expertDurations.textContent = formatDurations(data.allowed_session_durations);
+    els.expertBio.textContent = data.telegram_bio || 'No description yet.';
 
-    expertAvatarPlaceholderEl.textContent = (data.display_name || 'E').trim().charAt(0).toUpperCase() || 'E';
+    els.expertAvatarPlaceholder.textContent =
+        (data.display_name || 'E').trim().charAt(0).toUpperCase() || 'E';
 
     if (data.photo_url) {
-        expertAvatarEl.src = data.photo_url;
-        expertAvatarEl.classList.remove('hidden');
-        expertAvatarPlaceholderEl.classList.add('hidden');
+        els.expertAvatar.src = data.photo_url;
+        els.expertAvatar.classList.remove('hidden');
+        els.expertAvatarPlaceholder.classList.add('hidden');
     } else {
-        expertAvatarEl.classList.add('hidden');
-        expertAvatarPlaceholderEl.classList.remove('hidden');
+        els.expertAvatar.classList.add('hidden');
+        els.expertAvatarPlaceholder.classList.remove('hidden');
     }
+
     updateEditProfileButton(data);
 }
 
 function renderSlots(payload) {
-    slotsRangeLabelEl.textContent = formatDateRangeLabel(payload.period_start, payload.period_end);
-    slotsListEl.innerHTML = '';
+    els.slotsRangeLabel.textContent = formatDateRangeLabel(payload.period_start, payload.period_end);
+    els.slotsList.innerHTML = '';
 
     if (!Array.isArray(payload.days) || !payload.days.length) {
-        slotsEmptyEl.classList.remove('hidden');
+        els.slotsEmpty.classList.remove('hidden');
         selectedSlot = null;
         updateBookingUi();
         return;
@@ -161,13 +259,13 @@ function renderSlots(payload) {
     const visibleDays = payload.days.filter((day) => Array.isArray(day.slots) && day.slots.length > 0);
 
     if (!visibleDays.length) {
-        slotsEmptyEl.classList.remove('hidden');
+        els.slotsEmpty.classList.remove('hidden');
         selectedSlot = null;
         updateBookingUi();
         return;
     }
 
-    slotsEmptyEl.classList.add('hidden');
+    els.slotsEmpty.classList.add('hidden');
 
     visibleDays.forEach((day) => {
         const card = document.createElement('div');
@@ -200,6 +298,9 @@ function renderSlots(payload) {
                     ...slot,
                     day_label: day.label
                 };
+
+                debugBooking('slot selected', selectedSlot);
+
                 renderSlots(payload);
                 updateBookingUi();
             });
@@ -209,19 +310,19 @@ function renderSlots(payload) {
 
         card.appendChild(title);
         card.appendChild(chipList);
-        slotsListEl.appendChild(card);
+        els.slotsList.appendChild(card);
     });
 }
 
 function renderReviews(reviews) {
-    reviewsListEl.innerHTML = '';
+    els.reviewsList.innerHTML = '';
 
     if (!Array.isArray(reviews) || !reviews.length) {
-        reviewsEmptyEl.classList.remove('hidden');
+        els.reviewsEmpty.classList.remove('hidden');
         return;
     }
 
-    reviewsEmptyEl.classList.add('hidden');
+    els.reviewsEmpty.classList.add('hidden');
 
     reviews.forEach((review) => {
         const card = document.createElement('div');
@@ -248,7 +349,7 @@ function renderReviews(reviews) {
         card.appendChild(head);
         card.appendChild(text);
 
-        reviewsListEl.appendChild(card);
+        els.reviewsList.appendChild(card);
     });
 }
 
@@ -274,6 +375,12 @@ async function loadPublicPage() {
         );
 
         const payload = await response.json().catch(() => ({}));
+
+        debugBooking('loadPublicPage: response', {
+            status: response.status,
+            ok: response.ok,
+            payload
+        });
 
         if (!response.ok) {
             throw new Error(payload.message || 'Failed to load public page.');
@@ -306,9 +413,9 @@ async function loadPublicPage() {
             renderSlots(payload.availability);
             updateBookingUi();
         } else {
-            slotsListEl.innerHTML = '';
-            slotsRangeLabelEl.textContent = '—';
-            slotsEmptyEl.classList.remove('hidden');
+            els.slotsList.innerHTML = '';
+            els.slotsRangeLabel.textContent = '—';
+            els.slotsEmpty.classList.remove('hidden');
             selectedSlot = null;
             updateBookingUi();
         }
@@ -325,6 +432,11 @@ async function loadPublicPage() {
             return;
         }
 
+        debugBooking('loadPublicPage: ERROR', {
+            message: error?.message,
+            stack: error?.stack
+        });
+
         setDebugStatus(error.message || 'Failed to load public page.');
     } finally {
         if (requestId === currentPageRequestId) {
@@ -334,26 +446,15 @@ async function loadPublicPage() {
     }
 }
 
-function normalizeDurations(durations) {
-    if (!Array.isArray(durations)) {
-        return [];
-    }
-
-    return durations
-        .map((value) => Number(value))
-        .filter((value) => Number.isInteger(value) && value > 0)
-        .sort((a, b) => a - b);
-}
-
 function renderDurationPicker(durations) {
-    durationPickerEl.innerHTML = '';
+    els.durationPicker.innerHTML = '';
 
     if (!Array.isArray(durations) || !durations.length) {
-        durationPickerWrapEl.classList.add('hidden');
+        els.durationPickerWrap.classList.add('hidden');
         return;
     }
 
-    durationPickerWrapEl.classList.remove('hidden');
+    els.durationPickerWrap.classList.remove('hidden');
 
     durations.forEach((duration) => {
         const chip = document.createElement('button');
@@ -365,7 +466,10 @@ function renderDurationPicker(durations) {
             chip.classList.add('active');
         }
 
-        chip.addEventListener('click', async () => {
+        chip.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
             if (duration === currentDurationMinutes) {
                 return;
             }
@@ -375,7 +479,7 @@ function renderDurationPicker(durations) {
             await loadAvailabilityOnly();
         });
 
-        durationPickerEl.appendChild(chip);
+        els.durationPicker.appendChild(chip);
     });
 }
 
@@ -388,8 +492,10 @@ async function loadAvailabilityOnly() {
 
     const requestId = ++currentPageRequestId;
     const controller = new AbortController();
+
     currentPageRequestController = controller;
     updatePeriodButtonsState(true);
+
     try {
         setDebugStatus('Loading availability…');
 
@@ -400,6 +506,12 @@ async function loadAvailabilityOnly() {
 
         const payload = await response.json().catch(() => ({}));
 
+        debugBooking('loadAvailabilityOnly: response', {
+            status: response.status,
+            ok: response.ok,
+            payload
+        });
+
         if (!response.ok) {
             throw new Error(payload.message || 'Failed to load availability.');
         }
@@ -407,6 +519,7 @@ async function loadAvailabilityOnly() {
         if (requestId !== currentPageRequestId) {
             return;
         }
+
         syncSelectedSlotWithPayload(payload.availability);
         renderSlots(payload.availability);
         updateBookingUi();
@@ -422,6 +535,11 @@ async function loadAvailabilityOnly() {
             return;
         }
 
+        debugBooking('loadAvailabilityOnly: ERROR', {
+            message: error?.message,
+            stack: error?.stack
+        });
+
         setDebugStatus(error.message || 'Failed to load availability.');
     } finally {
         if (requestId === currentPageRequestId) {
@@ -432,11 +550,11 @@ async function loadAvailabilityOnly() {
 }
 
 function updateEditProfileButton(data) {
-    if (!editProfileBtnEl) {
+    if (!els.editProfileBtn) {
         return;
     }
 
-    editProfileBtnEl.href = `/e/${encodeURIComponent(data.public_slug)}/edit`;
+    els.editProfileBtn.href = `/e/${encodeURIComponent(data.public_slug)}/edit`;
 
     const telegramUser = resolveTelegramUser();
 
@@ -446,12 +564,11 @@ function updateEditProfileButton(data) {
         Number(data.telegram_id) === Number(telegramUser.id);
 
     if (isOwner) {
-        editProfileBtnEl.classList.remove('hidden');
+        els.editProfileBtn.classList.remove('hidden');
     } else {
-        editProfileBtnEl.classList.add('hidden');
+        els.editProfileBtn.classList.add('hidden');
     }
 }
-
 
 function closeModal(el) {
     el?.classList.add('hidden');
@@ -472,79 +589,287 @@ function deriveQuote(expert, durationMinutes) {
 }
 
 function updateBookingUi() {
-    if (!bookBtnEl) return;
+    if (!els.bookBtn) return;
 
     const enabled = !!selectedSlot && !!currentDurationMinutes && !!currentExpert;
-    bookBtnEl.disabled = !enabled;
+
+    els.bookBtn.disabled = !enabled;
 
     if (!enabled) {
-        selectedSlotSummaryEl?.classList.add('hidden');
-        selectedSlotSummaryEl.textContent = '';
+        els.selectedSlotSummary?.classList.add('hidden');
+        if (els.selectedSlotSummary) {
+            els.selectedSlotSummary.textContent = '';
+        }
         return;
     }
 
     const quote = deriveQuote(currentExpert, currentDurationMinutes);
-    selectedSlotSummaryEl?.classList.remove('hidden');
-    selectedSlotSummaryEl.textContent =
+
+    els.selectedSlotSummary?.classList.remove('hidden');
+    els.selectedSlotSummary.textContent =
         `Selected: ${formatSlotLabel(selectedSlot)} · ${currentDurationMinutes} min · ${quote} ${currentExpert.currency}`;
 }
 
+function safeWalletSnapshot(wallet) {
+    if (!wallet) {
+        return null;
+    }
+
+    return {
+        device: wallet.device || null,
+        provider: wallet.provider || null,
+        account: wallet.account
+            ? {
+                address: wallet.account.address || null,
+                chain: wallet.account.chain || null,
+                publicKey: wallet.account.publicKey || null
+            }
+            : null
+    };
+}
+
+function safeTonConnectUiSnapshot(tonConnectUi) {
+    if (!tonConnectUi) {
+        return null;
+    }
+
+    return {
+        wallet: safeWalletSnapshot(tonConnectUi.wallet),
+        hasConnectionRestoredPromise: tonConnectUi.connectionRestored instanceof Promise
+    };
+}
+
+function describeTonChain(chain) {
+    if (!chain) return 'unknown';
+
+    switch (String(chain)) {
+        case '-3':
+            return 'testnet';
+        case '-239':
+            return 'mainnet';
+        default:
+            return String(chain);
+    }
+}
+
 function initBookingTonConnect() {
-    if (!window.TON_CONNECT_UI || currentTonConnectUi) {
+    if (!window.TON_CONNECT_UI) {
+        debugBooking('initBookingTonConnect: TON_CONNECT_UI is missing on window');
         return;
     }
 
+    if (currentTonConnectUi) {
+        debugBooking('initBookingTonConnect: already initialized', safeTonConnectUiSnapshot(currentTonConnectUi));
+        return;
+    }
+
+    const tonConnectNetwork = ACTIVE_TON_CHAIN;
+
+    debugBooking('initBookingTonConnect: creating TonConnectUI', {
+        manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
+        importedNetwork: TON_APP_NETWORK,
+        activeNetworkLabel: ACTIVE_TON_NETWORK_LABEL,
+        activeChain: ACTIVE_TON_CHAIN,
+        tonConnectNetwork,
+        userAgent: navigator.userAgent,
+        href: window.location.href,
+        isTelegramMiniApp: !!window.Telegram?.WebApp,
+        telegramVersion: window.Telegram?.WebApp?.version || null,
+        telegramPlatform: window.Telegram?.WebApp?.platform || null,
+        buttonRootExists: !!document.getElementById('booking-ton-connect')
+    });
+
     currentTonConnectUi = new window.TON_CONNECT_UI.TonConnectUI({
         manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
-        buttonRootId: 'booking-ton-connect'
+        buttonRootId: 'booking-ton-connect',
+        actionsConfiguration: {
+            twaReturnUrl: `https://t.me/${BOT}?startapp=${currentSlug || 'expert_new'}`
+        }
     });
+
+    if (typeof currentTonConnectUi.setConnectRequestParameters === 'function') {
+        currentTonConnectUi.setConnectRequestParameters({
+            state: 'ready',
+            value: {
+                items: [
+                    {
+                        name: 'ton_addr',
+                        network: ACTIVE_TON_CHAIN
+                    }
+                ]
+            }
+        });
+
+        debugBooking('TonConnect connection request target applied', {
+            methodExists: typeof currentTonConnectUi.setConnectRequestParameters === 'function',
+            requestedItem: {
+                name: 'ton_addr',
+                network: ACTIVE_TON_CHAIN
+            }
+        });
+    } else {
+        debugBooking('TonConnect setConnectRequestParameters is not available');
+    }
+
+    debugBooking('initBookingTonConnect: created', safeTonConnectUiSnapshot(currentTonConnectUi));
 
     if (currentTonConnectUi.wallet?.account?.address) {
         currentWalletAddress = currentTonConnectUi.wallet.account.address;
+
+        debugBooking('initBookingTonConnect: initial wallet found', {
+            currentWalletAddress,
+            chain: currentTonConnectUi.wallet?.account?.chain || null,
+            chainLabel: describeTonChain(currentTonConnectUi.wallet?.account?.chain)
+        });
+    } else {
+        debugBooking('initBookingTonConnect: no initial wallet connected');
     }
 
-    currentTonConnectUi.onStatusChange((wallet) => {
-        currentWalletAddress = wallet?.account?.address || '';
-        if (currentWalletAddress && walletRequiredModalEl && !walletRequiredModalEl.classList.contains('hidden')) {
-            closeModal(walletRequiredModalEl);
-            openBookingConfirmModal();
+    if (currentTonConnectUi.connectionRestored instanceof Promise) {
+        currentTonConnectUi.connectionRestored
+            .then((restored) => {
+                debugBooking('TonConnect connectionRestored resolved', {
+                    restored,
+                    snapshot: safeTonConnectUiSnapshot(currentTonConnectUi)
+                });
+            })
+            .catch((error) => {
+                debugBooking('TonConnect connectionRestored rejected', {
+                    message: error?.message,
+                    stack: error?.stack
+                });
+            });
+    }
+
+    currentTonConnectUi.onStatusChange(
+        (wallet) => {
+            currentWalletAddress = wallet?.account?.address || '';
+
+            debugBooking('TonConnect onStatusChange', {
+                wallet: safeWalletSnapshot(wallet),
+                currentWalletAddress,
+                chain: wallet?.account?.chain || null,
+                chainLabel: describeTonChain(wallet?.account?.chain),
+                expectedNetwork: ACTIVE_TON_NETWORK_LABEL,
+                expectedChain: ACTIVE_TON_CHAIN
+            });
+
+            const actualChain = String(wallet?.account?.chain || '');
+            const expectedChain = ACTIVE_TON_CHAIN;
+
+            if (currentWalletAddress && actualChain !== expectedChain) {
+                debugBooking('TonConnect wrong network on connect', {
+                    currentWalletAddress,
+                    actualChain,
+                    actualChainLabel: describeTonChain(actualChain),
+                    expectedChain,
+                    expectedNetwork: ACTIVE_TON_NETWORK_LABEL
+                });
+
+                setDebugStatus(
+                    `Wrong wallet network. Expected ${ACTIVE_TON_NETWORK_LABEL}, got ${describeTonChain(actualChain)}. Disconnecting wallet.`
+                );
+
+                currentWalletAddress = '';
+
+                currentTonConnectUi.disconnect().catch((error) => {
+                    debugBooking('TonConnect auto-disconnect ERROR', {
+                        message: error?.message,
+                        stack: error?.stack
+                    });
+                });
+
+                return;
+            }
+
+            if (
+                currentWalletAddress &&
+                els.walletRequiredModal &&
+                !els.walletRequiredModal.classList.contains('hidden')
+            ) {
+                closeModal(els.walletRequiredModal);
+                openBookingConfirmModal();
+            }
+        },
+        (error) => {
+            debugBooking('TonConnect onStatusChange ERROR', {
+                message: error?.message,
+                stack: error?.stack
+            });
         }
-    });
+    );
 }
 
 function openBookingConfirmModal() {
-    if (!selectedSlot || !currentExpert) return;
+    if (!selectedSlot || !currentExpert) {
+        debugBooking('openBookingConfirmModal: blocked', {
+            selectedSlot,
+            currentExpert
+        });
+        return;
+    }
 
     const quote = deriveQuote(currentExpert, currentDurationMinutes);
-    bookingConfirmTextEl.textContent =
+
+    els.bookingConfirmText.textContent =
         `You are booking ${currentExpert.display_name} for ${currentDurationMinutes} minutes at ${selectedSlot.day_label} ${selectedSlot.start_local}. Prepayment: ${quote} ${currentExpert.currency}.`;
-    openModal(bookingConfirmModalEl);
+
+    openModal(els.bookingConfirmModal);
+
+    debugBooking('openBookingConfirmModal: opened', {
+        selectedSlot,
+        currentDurationMinutes,
+        quote
+    });
 }
 
 async function createBookingRequest() {
     const telegramUser = resolveTelegramUser();
+
+    debugBooking('createBookingRequest: initial state', {
+        telegramUser,
+        currentSlug,
+        selectedSlot,
+        currentDurationMinutes,
+        currentWalletAddress,
+        currentExpertCurrency: currentExpert?.currency,
+        currentExpertRate: currentExpert?.hourly_rate
+    });
+
     if (!telegramUser?.id) {
-        openModal(telegramRequiredModalEl);
-        return;
+        debugBooking('createBookingRequest: missing telegram user');
+        openModal(els.telegramRequiredModal);
+        return null;
     }
+
+    const payload = {
+        expert_slug: currentSlug,
+        slot_start: selectedSlot?.start_utc,
+        duration_minutes: currentDurationMinutes,
+        requested_by_telegram_id: Number(telegramUser.id),
+        requested_by_username: telegramUser.username || null,
+        requested_by_display_name: [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ') || telegramUser.first_name || 'Telegram user',
+        requested_by_ton_wallet: currentWalletAddress || null
+    };
+
+    debugBooking('createBookingRequest: payload', payload);
 
     const response = await fetch('/api/bookings/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            expert_slug: currentSlug,
-            slot_start: selectedSlot.start_utc,
-            duration_minutes: currentDurationMinutes,
-            requested_by_telegram_id: Number(telegramUser.id),
-            requested_by_username: telegramUser.username || null,
-            requested_by_display_name: [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ') || telegramUser.first_name || 'Telegram user',
-            requested_by_ton_wallet: currentWalletAddress || null
-        })
+        body: JSON.stringify(payload)
     });
 
     const data = await response.json().catch(() => ({}));
+
+    debugBooking('createBookingRequest: response', {
+        status: response.status,
+        ok: response.ok,
+        data
+    });
+
     if (!response.ok) {
-        throw new Error(data.error || 'Booking request failed.');
+        throw new Error(data.error || data.message || 'Booking request failed.');
     }
 
     return data;
@@ -553,88 +878,554 @@ async function createBookingRequest() {
 async function beginBookingPayment(bookingId) {
     const telegramUser = resolveTelegramUser();
 
+    const payload = {
+        telegram_id: Number(telegramUser?.id),
+        ton_wallet_customer: currentWalletAddress
+    };
+
+    debugBooking('beginBookingPayment: payload', {
+        bookingId,
+        payload
+    });
+
     const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/begin-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            telegram_id: Number(telegramUser.id),
-            ton_wallet_customer: currentWalletAddress
-        })
+        body: JSON.stringify(payload)
     });
 
     const data = await response.json().catch(() => ({}));
+
+    debugBooking('beginBookingPayment: response', {
+        status: response.status,
+        ok: response.ok,
+        data
+    });
+
     if (!response.ok) {
-        throw new Error(data.error || 'Payment start failed.');
+        throw new Error(data.error || data.message || 'Payment start failed.');
     }
+
     return data;
 }
 
-bookBtnEl?.addEventListener('click', async () => {
-    try {
-        const telegramUser = resolveTelegramUser();
-        if (!telegramUser?.id) {
-            openModal(telegramRequiredModalEl);
-            return;
+async function confirmBookingPayment(bookingId, txResult) {
+    const payload = {
+        boc: txResult?.boc || null,
+        trace_id: txResult?.traceId || null
+    };
+
+    debugBooking('confirmBookingPayment: payload', {
+        bookingId,
+        payload: {
+            hasBoc: !!payload.boc,
+            bocLength: payload.boc ? String(payload.boc).length : 0,
+            trace_id: payload.trace_id
         }
+    });
 
-        initBookingTonConnect();
+    const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/confirm-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
 
-        if (!currentWalletAddress) {
-            openModal(walletRequiredModalEl);
-            return;
-        }
+    const data = await response.json().catch(() => ({}));
 
-        openBookingConfirmModal();
-    } catch (error) {
-        console.error(error);
-        setDebugStatus(error.message || 'Booking flow failed.');
+    debugBooking('confirmBookingPayment: response', {
+        status: response.status,
+        ok: response.ok,
+        data
+    });
+
+    if (!response.ok) {
+        throw new Error(data.error || data.message || 'Payment confirmation failed.');
     }
-});
 
-bookingConfirmSubmitEl?.addEventListener('click', async () => {
+    return data;
+}
+
+function normalizePaymentPayload(data) {
+    if (!data) {
+        return null;
+    }
+
+    const payload = data.payment_payload || data.ton_payment || data;
+
+    const contractAddress =
+        payload.contract_address ||
+        payload.contractAddress ||
+        payload.destination_address ||
+        payload.destinationAddress ||
+        data.contract_address ||
+        data.contractAddress ||
+        null;
+
+    const amountNanoTon =
+        payload.total_deploy_value_nano_ton ||
+        payload.totalDeployValueNanoTon ||
+        data.total_deploy_value_nano_ton ||
+        data.totalDeployValueNanoTon ||
+        payload.amount_nano_ton ||
+        payload.amountNanoTon ||
+        data.amount_nano_ton ||
+        data.amountNanoTon ||
+        null;
+
+    const stateInitBoc =
+        payload.state_init_boc ||
+        payload.stateInitBoc ||
+        payload.stateInit ||
+        data.state_init_boc ||
+        data.stateInitBoc ||
+        data.stateInit ||
+        null;
+
+    return {
+        booking_id: data.booking_id || data.bookingId || payload.booking_id || payload.bookingId || null,
+        payment_id: data.payment_id || data.paymentId || payload.payment_id || payload.paymentId || payload.id || null,
+        contract_address: contractAddress,
+        destination_address: contractAddress,
+        amount_nano_ton: amountNanoTon,
+        state_init_boc: stateInitBoc,
+        raw: data
+    };
+}
+async function sendTonBookingPayment(paymentPayload) {
+    debugBooking('sendTonBookingPayment: received payload', {
+        ...paymentPayload,
+        state_init_boc: paymentPayload?.state_init_boc
+            ? `[stateInit length ${String(paymentPayload.state_init_boc).length}]`
+            : null
+    });
+
+    if (!currentTonConnectUi) {
+        throw new Error('TON Connect is not initialized.');
+    }
+
+    if (!currentWalletAddress) {
+        throw new Error('TON wallet is not connected.');
+    }
+
+    const destinationAddress =
+        paymentPayload?.destination_address ||
+        paymentPayload?.contract_address;
+
+    const amountNanoTon = paymentPayload?.amount_nano_ton
+        ? String(paymentPayload.amount_nano_ton)
+        : '';
+
+    if (!destinationAddress || !amountNanoTon) {
+        throw new Error('Payment payload is missing destination address or amount.');
+    }
+
+    if (!/^\d+$/.test(amountNanoTon)) {
+        throw new Error(`Payment amount must be an integer nanoTON string. Got: ${amountNanoTon}`);
+    }
+
+    if (!paymentPayload.state_init_boc) {
+        throw new Error('Missing state_init_boc. Cannot deploy escrow contract.');
+    }
+
+    const actualChain = String(currentTonConnectUi?.wallet?.account?.chain || '');
+    const expectedChain = ACTIVE_TON_CHAIN;
+
+    debugBooking('sendTonBookingPayment: chain state', {
+        actualChain,
+        actualChainLabel: describeTonChain(actualChain),
+        expectedChain,
+        expectedNetwork: ACTIVE_TON_NETWORK_LABEL,
+        wallet: safeWalletSnapshot(currentTonConnectUi.wallet)
+    });
+
+    if (actualChain !== expectedChain) {
+        throw new Error(
+            `Wrong wallet network. Expected ${ACTIVE_TON_NETWORK_LABEL}, got ${describeTonChain(actualChain)} (${actualChain}).`
+        );
+    }
+
+    const message = {
+        address: destinationAddress,
+        amount: amountNanoTon,
+        stateInit: paymentPayload.state_init_boc
+    };
+
+    debugBooking('sendTonBookingPayment: tx target', {
+        contractAddress: destinationAddress,
+        amountNanoTon,
+        amountTonApprox: Number(amountNanoTon) / 1_000_000_000,
+        hasStateInit: true,
+        stateInitLength: String(paymentPayload.state_init_boc).length
+    });
+
+    const txPayload = {
+        validUntil: Math.floor(Date.now() / 1000) + 300,
+        network: ACTIVE_TON_CHAIN,
+        messages: [message]
+    };
+
+    debugBooking('sendTonBookingPayment: tx payload before wallet', {
+        ...txPayload,
+        messages: txPayload.messages.map((item) => ({
+            ...item,
+            stateInit: item.stateInit
+                ? `[stateInit length ${String(item.stateInit).length}]`
+                : null
+        }))
+    });
+
+    setDebugStatus('Opening Telegram Wallet…');
+
+    let walletTimeoutId = null;
+
     try {
-        bookingConfirmSubmitEl.disabled = true;
+        debugBooking('sendTonBookingPayment: calling sendTransaction now');
 
-        const requested = await createBookingRequest();
-        if (!requested?.id) {
+        const sendPromise = currentTonConnectUi.sendTransaction(txPayload);
+
+        const timeoutPromise = new Promise((_, reject) => {
+            walletTimeoutId = setTimeout(() => {
+                reject(new Error('Wallet did not answer within 180 seconds.'));
+            }, 180000);
+        });
+
+        const result = await Promise.race([sendPromise, timeoutPromise]);
+
+        if (walletTimeoutId) {
+            clearTimeout(walletTimeoutId);
+        }
+
+        debugBooking('sendTonBookingPayment: wallet returned result', {
+            result,
+            hasBoc: !!result?.boc,
+            bocLength: result?.boc ? String(result.boc).length : 0
+        });
+
+        return result;
+    } catch (error) {
+        if (walletTimeoutId) {
+            clearTimeout(walletTimeoutId);
+        }
+
+        const messageText = String(error?.message || '');
+
+        debugBooking('sendTonBookingPayment: ERROR', {
+            name: error?.name,
+            message: messageText,
+            stack: error?.stack,
+            currentWalletAddress,
+            tonConnectUi: safeTonConnectUiSnapshot(currentTonConnectUi),
+            txPayload: {
+                ...txPayload,
+                messages: txPayload.messages.map((item) => ({
+                    ...item,
+                    stateInit: item.stateInit
+                        ? `[stateInit length ${String(item.stateInit).length}]`
+                        : null
+                }))
+            }
+        });
+
+        if (messageText.includes('No enough funds') || messageText.includes('Insufficient funds')) {
+            throw new Error('Not enough TON in the connected wallet to send this transaction and cover network costs.');
+        }
+
+        if (messageText.includes('Transaction was not sent')) {
+            throw new Error('Wallet did not complete the transaction. Please open Telegram Wallet and approve it there.');
+        }
+
+        if (messageText.includes('Wallet did not answer within 180 seconds.')) {
+            throw new Error('Wallet did not answer within 180 seconds. Telegram Wallet likely did not return control to the Mini App.');
+        }
+
+        throw error;
+    }
+}
+
+function bindEvents() {
+    els.bookBtn?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        try {
+            debugBooking('bookBtn click');
+
+            const telegramUser = resolveTelegramUser();
+
+            if (!telegramUser?.id) {
+                debugBooking('bookBtn click: missing telegram user');
+                openModal(els.telegramRequiredModal);
+                return;
+            }
+
+            if (!selectedSlot || !currentExpert || !currentDurationMinutes) {
+                throw new Error('Choose a slot first.');
+            }
+
+            if (!currentTonConnectUi) {
+                debugBooking('bookBtn click: opening wallet modal before TonConnect init');
+                openModal(els.walletRequiredModal);
+                initBookingTonConnect();
+                return;
+            }
+
+            if (!currentWalletAddress) {
+                debugBooking('bookBtn click: missing wallet address, opening wallet modal');
+                openModal(els.walletRequiredModal);
+                return;
+            }
+
+            const actualChain = String(currentTonConnectUi?.wallet?.account?.chain || '');
+
+            if (actualChain !== ACTIVE_TON_CHAIN) {
+                throw new Error(
+                    `Wrong wallet network. Expected ${ACTIVE_TON_NETWORK_LABEL}, got ${describeTonChain(actualChain)} (${actualChain}).`
+                );
+            }
+
+            debugBooking('bookBtn click: wallet state before confirm modal', {
+                currentWalletAddress,
+                tonConnectUi: safeTonConnectUiSnapshot(currentTonConnectUi),
+                expectedNetwork: ACTIVE_TON_NETWORK_LABEL,
+                expectedChain: ACTIVE_TON_CHAIN
+            });
+
+            openBookingConfirmModal();
+        } catch (error) {
+            debugBooking('bookBtn click: ERROR', {
+                message: error?.message,
+                stack: error?.stack
+            });
+
+            console.error(error);
+            setDebugStatus(error.message || 'Booking flow failed.');
+        }
+    });
+
+    els.bookingConfirmSubmit?.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (els.bookingConfirmSubmit.disabled) {
             return;
         }
-        const started = await beginBookingPayment(requested.id);
 
-        closeModal(bookingConfirmModalEl);
-        setDebugStatus(`Booking #${started.id} created. Status: ${started.status}. Payment: ${started.payment_status || 'n/a'}.`);
+        try {
+            debugBooking('confirm submit: clicked');
 
-        selectedSlot = null;
-        updateBookingUi();
-        loadPublicPage();
-    } catch (error) {
-        console.error(error);
-        setDebugStatus(error.message || 'Booking failed.');
-    } finally {
-        bookingConfirmSubmitEl.disabled = false;
-    }
-});
+            els.bookingConfirmSubmit.disabled = true;
 
-telegramRequiredCloseEl?.addEventListener('click', () => closeModal(telegramRequiredModalEl));
-walletRequiredCloseEl?.addEventListener('click', () => closeModal(walletRequiredModalEl));
-bookingConfirmCloseEl?.addEventListener('click', () => closeModal(bookingConfirmModalEl));
+            if (!selectedSlot || !currentExpert || !currentDurationMinutes) {
+                throw new Error('Booking data is missing. Choose a slot again.');
+            }
 
-document.addEventListener('DOMContentLoaded', () => {
-    initTelegramWebApp();
+            if (!currentTonConnectUi) {
+                throw new Error('TON Connect is not initialized.');
+            }
 
-    currentSlug = getSlugFromPath();
+            if (!currentWalletAddress) {
+                throw new Error('TON wallet is not connected.');
+            }
 
-    prevPeriodBtnEl.addEventListener('click', () => {
+            const actualChain = String(currentTonConnectUi?.wallet?.account?.chain || '');
+
+            if (actualChain !== ACTIVE_TON_CHAIN) {
+                throw new Error(
+                    `Wrong wallet network. Expected ${ACTIVE_TON_NETWORK_LABEL}, got ${describeTonChain(actualChain)} (${actualChain}).`
+                );
+            }
+
+            setDebugStatus('Creating booking…');
+
+            const requested = await createBookingRequest();
+
+            debugBooking('confirm submit: booking request returned', requested);
+
+            if (!requested?.id) {
+                throw new Error('Booking was not created: missing booking id.');
+            }
+
+            setDebugStatus('Preparing TON escrow contract…');
+
+            const startedRaw = await beginBookingPayment(requested.id);
+            const started = normalizePaymentPayload(startedRaw);
+
+            debugBooking('confirm submit: normalized payment payload', {
+                ...started,
+                state_init_boc: started?.state_init_boc
+                    ? `[stateInit length ${String(started.state_init_boc).length}]`
+                    : null
+            });
+
+            if (!started?.contract_address && !started?.destination_address) {
+                throw new Error('TON Worker did not return contract address.');
+            }
+
+            if (!started?.amount_nano_ton) {
+                throw new Error('TON Worker did not return payment amount.');
+            }
+
+            if (!started?.state_init_boc) {
+                throw new Error('TON Worker did not return state_init_boc. Escrow contract deployment needs it.');
+            }
+
+            setDebugStatus('Open Telegram Wallet and approve the escrow transaction…');
+
+            const txResult = await sendTonBookingPayment(started);
+
+            debugBooking('confirm submit: wallet returned result', {
+                hasBoc: !!txResult?.boc,
+                bocLength: txResult?.boc ? String(txResult.boc).length : 0,
+                traceId: txResult?.traceId || null
+            });
+
+            if (!txResult?.boc) {
+                throw new Error('Wallet approved, but no BOC was returned. Cannot verify transaction yet.');
+            }
+
+            setDebugStatus('Wallet approved. Sending transaction BOC to backend…');
+
+            await confirmBookingPayment(requested.id, txResult);
+
+            closeModal(els.bookingConfirmModal);
+
+            setDebugStatus('Payment sent. Waiting for on-chain confirmation.');
+
+            selectedSlot = null;
+            updateBookingUi();
+            await loadPublicPage();
+        } catch (error) {
+            debugBooking('confirm submit: ERROR', {
+                message: error?.message,
+                stack: error?.stack
+            });
+
+            console.error(error);
+            setDebugStatus(error.message || 'Booking failed.');
+        } finally {
+            els.bookingConfirmSubmit.disabled = false;
+        }
+    });
+
+    els.telegramRequiredClose?.addEventListener('click', (event) => {
+        event.preventDefault();
+        closeModal(els.telegramRequiredModal);
+    });
+
+    els.walletRequiredClose?.addEventListener('click', (event) => {
+        event.preventDefault();
+        closeModal(els.walletRequiredModal);
+    });
+
+    els.bookingConfirmClose?.addEventListener('click', (event) => {
+        event.preventDefault();
+        closeModal(els.bookingConfirmModal);
+    });
+
+    els.prevPeriodBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
         currentOffsetDays = Math.max(0, currentOffsetDays - 7);
         loadPublicPage();
     });
 
-    nextPeriodBtnEl.addEventListener('click', () => {
+    els.nextPeriodBtn?.addEventListener('click', (event) => {
+        event.preventDefault();
         currentOffsetDays += 7;
         loadPublicPage();
     });
 
+    document.addEventListener('visibilitychange', () => {
+        debugBooking('document.visibilitychange', {
+            visibilityState: document.visibilityState
+        });
+    });
+
+    window.addEventListener('focus', () => {
+        debugBooking('window.focus');
+    });
+
+    window.addEventListener('blur', () => {
+        debugBooking('window.blur');
+    });
+
+    window.addEventListener('pageshow', () => {
+        debugBooking('window.pageshow');
+    });
+
+    window.addEventListener('pagehide', () => {
+        debugBooking('window.pagehide');
+    });
+}
+
+async function forceDisconnectWallet() {
+    if (!currentTonConnectUi) {
+        debugBooking('forceDisconnectWallet: TonConnect not initialized');
+        return;
+    }
+
+    try {
+        debugBooking('forceDisconnectWallet: before disconnect', safeTonConnectUiSnapshot(currentTonConnectUi));
+
+        await currentTonConnectUi.disconnect();
+
+        currentWalletAddress = '';
+
+        debugBooking('forceDisconnectWallet: disconnected');
+        setDebugStatus('Wallet disconnected. Reconnect wallet and try again.');
+    } catch (error) {
+        debugBooking('forceDisconnectWallet: ERROR', {
+            message: error?.message,
+            stack: error?.stack
+        });
+
+        setDebugStatus(error?.message || 'Wallet disconnect failed.');
+    }
+}
+
+window.forceDisconnectWallet = forceDisconnectWallet;
+
+function boot() {
+    bindDom();
+    ensureDebugPanel();
+    installGlobalErrorLogging();
+
+    debugBooking('expert-public.js loaded', {
+        href: window.location.href,
+        readyState: document.readyState,
+        hasDebugStatus: !!els.debugStatus,
+        hasBookingDebugPanel: !!document.getElementById('booking-debug-panel'),
+        hasBookBtn: !!els.bookBtn,
+        hasConfirmBtn: !!els.bookingConfirmSubmit,
+        hasTonConnectUiGlobal: !!window.TON_CONNECT_UI
+    });
+
+    initTelegramWebApp();
+
+    currentSlug = getSlugFromPath();
+
+    debugBooking('boot', {
+        href: window.location.href,
+        origin: window.location.origin,
+        slug: currentSlug,
+        expectedNetwork: ACTIVE_TON_NETWORK_LABEL,
+        expectedChain: ACTIVE_TON_CHAIN,
+        importedNetwork: TON_APP_NETWORK,
+        bot: BOT,
+        isTelegramMiniApp: !!window.Telegram?.WebApp,
+        telegramVersion: window.Telegram?.WebApp?.version || null,
+        telegramPlatform: window.Telegram?.WebApp?.platform || null,
+        resolvedTelegramUser: resolveTelegramUser()
+    });
+
+    bindEvents();
+
     loadPublicPage();
-    initBookingTonConnect();
+
     updateBookingUi();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+} else {
+    boot();
+}
