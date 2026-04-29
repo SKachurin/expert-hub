@@ -33,8 +33,8 @@ The current focus is:
 3. real availability from Google Calendar
 4. booking request creation
 5. TON escrow preparation
-6. frontend TON Connect payment flow
-7. later: expert confirmation, session detection, settlement, and reviews
+6. frontend TON Connect payment flow with successful wallet return handling 
+7. next: payment funding verification - correct data to smart contract(ton-worker), error wallet return/no return handling, expert confirmation, session detection, settlement, and reviews
 
 The app is still not a full marketplace. It is now a working vertical slice around one public expert page and the beginning of the real booking/payment flow.
 
@@ -67,11 +67,13 @@ At this stage the project already has:
 - payment draft creation
 - Rust → TON Worker prepare-booking integration
 - frontend receives contract address, StateInit, and TON amount
-- frontend attempts TON Connect transaction to deploy/fund the escrow contract
+- frontend sends a TON Connect transaction to deploy/fund the escrow contract
+- Telegram Wallet can approve the testnet transaction and return control to the Mini App
+- after wallet success, the customer sees a payment-success modal and can close the Telegram Mini App
 
 Currently still not finished:
 
-- final successful wallet transaction approval is still being debugged
+- on-chain funding verification after wallet approval is still not fully wired into the booking lifecycle
 - payment funding verification is not implemented yet
 - booking does not yet move to `funded` after on-chain confirmation
 - expert Telegram confirmation flow is not implemented yet
@@ -305,7 +307,10 @@ Current flow:
 
 Current limitation:
 
-* successful wallet approval and on-chain funding verification are not finished yet.
+* wallet approval and return to the Mini App works in the testnet flow
+* after wallet return, the frontend currently shows a success/waiting modal and closes the Mini App on OK
+* on-chain funding verification is not yet connected to the final booking lifecycle
+* booking/payment status does not yet reliably move to `funded` after wallet approval
 
 ---
 
@@ -605,6 +610,9 @@ Current implemented flow:
 16. backend stores returned contract address / transaction reference
 17. backend returns payment data to frontend
 18. frontend calls TON Connect `sendTransaction()`
+19. Telegram Wallet approves the testnet transaction and returns control to the Mini App
+20. frontend shows a payment-success modal: the customer is told that the payment was sent and the system is waiting for expert confirmation
+21. OK closes the Telegram Mini App
 
 Current frontend TON Connect transaction shape:
 
@@ -624,20 +632,19 @@ await tonConnectUi.sendTransaction({
 
 When this succeeds, the customer wallet should deploy and fund the prepared contract.
 
-Current issue:
+Current behavior:
 
-* Telegram Wallet is still declining the transaction in the current test flow.
-* The returned contract address is expected to be a new deterministic contract address for that booking.
-* The app should send the transaction to that contract address with `stateInit`, not to the expert wallet directly.
-* The exact wallet rejection reason still needs debugging.
-
+* Telegram Wallet approves the testnet transaction and returns a result to the Mini App.
+* The app sends the transaction to the deterministic escrow contract address with `stateInit`, not to the expert wallet directly.
+* The frontend currently treats wallet return as a successful customer-side payment submission and shows a waiting-for-expert-confirmation modal.
+* Full backend funding verification and lifecycle transition to `funded` is still pending.
 ---
 
 ## TON Worker payload contract
 
 Current Rust → TON Worker prepare payload should use the worker’s expected request shape.
 
-Current target shape:
+Current target shape depends on the running TON Worker version. The Rust backend and worker DTOs must match exactly. One worker version expects:
 
 ```json
 {
@@ -653,6 +660,7 @@ Current target shape:
   "session_outcome_deadline_unix": 1760090000
 }
 ```
+The current Rust integration may use `amount` + `currency` if the running TON Worker schema expects that version. Do not change this casually: if wallet payment reaches Telegram Wallet and returns successfully, the Rust and worker payloads are already compatible for the active environment.
 
 Important:
 
@@ -848,7 +856,7 @@ Current important frontend logic:
 * `index.js` routes Telegram `startapp` params
 * `index.js` builds internal links inside Mini App and Telegram deep links outside Mini App
 * `expert-public.js` loads public expert profile and availability
-* `expert-public.js` handles slot selection, booking request, payment preparation, and TON Connect transaction
+* `expert-public.js` handles slot selection, booking request, payment preparation, TON Connect transaction, wallet-return success modal, and Telegram Mini App close action
 * `app-config.js` controls dev/prod bot and TON network split
 
 ---
@@ -976,7 +984,9 @@ The project can currently demonstrate:
 13. backend creates payment draft
 14. backend calls TON Worker
 15. TON Worker returns deterministic escrow contract address and StateInit
-16. frontend attempts TON Connect escrow deployment/funding transaction
+16. frontend sends TON Connect escrow deployment/funding transaction
+17. Telegram Wallet approves the testnet transaction and returns control to the Mini App
+18. frontend shows a payment-success modal and closes the Mini App after OK
 
 ---
 
@@ -984,11 +994,9 @@ The project can currently demonstrate:
 
 Next priorities:
 
-1. Fix Telegram Wallet transaction rejection.
-2. Confirm correct contract address / StateInit / amount format.
-3. Add payment funding verification after successful wallet approval.
-4. Move payment to `funded`.
-5. Move booking to `funded` / `waiting_for_session`.
+1. Add reliable payment funding verification after successful wallet approval.
+2. Move payment to `funded`.
+3. Move booking to `funded` / `waiting_for_session`.
 6. Add expert confirmation flow through Telegram bot.
 7. Wire `expert_confirm` and `expert_decline` contract actions.
 8. Add Telegram watcher service.

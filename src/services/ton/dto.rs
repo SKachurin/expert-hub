@@ -40,3 +40,12 @@ pub struct ContractActionResponse {
     pub action: String,
     pub ok: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookingContractStateResponse {
+    pub contract_address: String,
+    pub account_state: String,
+    pub balance_nano_ton: String,
+    pub contract_state: Option<i32>,
+    pub is_funded: bool,
+}

@@ -20,6 +20,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
     cfg.service(bookings::create_booking_request_handler);
     cfg.service(bookings::begin_booking_payment_handler);
+    cfg.service(bookings::confirm_booking_payment_handler);
 
     cfg.service(experts::get_edit_expert_handler);
     cfg.service(experts::update_edit_expert_handler);
@@ -34,5 +35,4 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
     cfg.service(pages::expert_public_page);
     cfg.service(pages::expert_edit_page);
-
 }

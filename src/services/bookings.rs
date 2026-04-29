@@ -5,7 +5,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-
+use tokio::time::{sleep, Duration as TokioDuration};
 use crate::{
     entities::{bookings, experts, payments},
     services::{
@@ -36,6 +36,7 @@ pub const PAYMENT_STATUS_AWAITING_PAYMENT: &str = "awaiting_payment";
 pub const PAYMENT_STATUS_FUNDED: &str = "funded";
 pub const PAYMENT_STATUS_REFUNDED: &str = "refunded";
 pub const PAYMENT_STATUS_SETTLED: &str = "settled";
+pub const PAYMENT_STATUS_SUBMITTED: &str = "submitted";
 
 pub const ACTIVE_BOOKING_BLOCKER_STATUSES: &[&str] = &[
     BOOKING_STATUS_REQUESTED,
@@ -98,6 +99,26 @@ pub struct BeginPaymentResponse {
     pub recommended_gas_buffer_nano_ton: String,
     pub total_deploy_value_nano_ton: String,
     pub payment_status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfirmBookingPaymentRequest {
+    pub boc: Option<String>,
+    pub trace_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConfirmBookingPaymentResponse {
+    pub booking_id: i64,
+    pub payment_id: i64,
+    pub booking_status: String,
+    pub payment_status: String,
+    pub contract_address: String,
+    pub transaction_ref: Option<String>,
+    pub verified: bool,
+    pub contract_state: Option<i32>,
+    pub account_state: String,
+    pub balance_nano_ton: String,
 }
 
 fn derive_amount(hourly_rate: Decimal, duration_minutes: i64) -> Result<Decimal, String> {
@@ -427,5 +448,142 @@ pub async fn begin_booking_payment(
         recommended_gas_buffer_nano_ton: contract.recommended_gas_buffer_nano_ton,
         total_deploy_value_nano_ton: contract.total_deploy_value_nano_ton,
         payment_status: updated_payment.status,
+    })
+}
+
+pub async fn confirm_booking_payment(
+    state: &AppState,
+    booking_id: i64,
+    body: ConfirmBookingPaymentRequest,
+) -> Result<ConfirmBookingPaymentResponse, String> {
+    let boc = body
+        .boc
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| "transaction BOC is required".to_string())?;
+
+    if boc.len() < 100 {
+        return Err("transaction BOC is too short".to_string());
+    }
+
+    let booking = bookings::Entity::find_by_id(booking_id)
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to load booking: {e}"))?
+        .ok_or_else(|| "booking not found".to_string())?;
+
+    if booking.status != BOOKING_STATUS_AWAITING_PAYMENT
+        && booking.status != BOOKING_STATUS_FUNDED
+    {
+        return Err(format!(
+            "booking cannot confirm payment from status {}",
+            booking.status
+        ));
+    }
+
+    let payment = payments::Entity::find()
+        .filter(payments::Column::BookingId.eq(booking.id))
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to load payment: {e}"))?
+        .ok_or_else(|| "payment not found".to_string())?;
+
+    let contract_address = payment
+        .contract_address
+        .clone()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| "payment contract address is missing".to_string())?;
+
+    let now = Utc::now().fixed_offset();
+
+    let tx_ref = body
+        .trace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| format!("wallet_trace:{v}"))
+        .unwrap_or_else(|| format!("wallet_boc_len:{}", boc.len()));
+
+    let ton_client = TonWorkerClient::new(
+        state.config.ton_worker_base_url.clone(),
+        state.config.ton_worker_auth_token.clone(),
+    );
+
+    let ton_controller = TonController::new(ton_client);
+
+    let mut last_state = None;
+
+    for attempt in 0..15 {
+        let contract_state = ton_controller
+            .get_booking_contract_state(&contract_address)
+            .await?;
+
+        if contract_state.is_funded {
+            let mut booking_model: bookings::ActiveModel = booking.clone().into();
+            booking_model.status = Set(BOOKING_STATUS_FUNDED.to_string());
+            booking_model.updated_at = Set(now);
+
+            let updated_booking = booking_model
+                .update(&state.db)
+                .await
+                .map_err(|e| format!("failed to mark booking funded: {e}"))?;
+
+            let mut payment_model: payments::ActiveModel = payment.clone().into();
+            payment_model.status = Set(PAYMENT_STATUS_FUNDED.to_string());
+            payment_model.transaction_ref = Set(Some(tx_ref.clone()));
+            payment_model.updated_at = Set(now);
+
+            let updated_payment = payment_model
+                .update(&state.db)
+                .await
+                .map_err(|e| format!("failed to mark payment funded: {e}"))?;
+
+            return Ok(ConfirmBookingPaymentResponse {
+                booking_id: updated_booking.id,
+                payment_id: updated_payment.id,
+                booking_status: updated_booking.status,
+                payment_status: updated_payment.status,
+                contract_address,
+                transaction_ref: updated_payment.transaction_ref,
+                verified: true,
+                contract_state: contract_state.contract_state,
+                account_state: contract_state.account_state,
+                balance_nano_ton: contract_state.balance_nano_ton,
+            });
+        }
+
+        last_state = Some(contract_state);
+
+        if attempt < 14 {
+            sleep(TokioDuration::from_secs(2)).await;
+        }
+    }
+
+    let mut payment_model: payments::ActiveModel = payment.clone().into();
+    payment_model.status = Set(PAYMENT_STATUS_SUBMITTED.to_string());
+    payment_model.transaction_ref = Set(Some(tx_ref.clone()));
+    payment_model.updated_at = Set(now);
+
+    let updated_payment = payment_model
+        .update(&state.db)
+        .await
+        .map_err(|e| format!("failed to store submitted payment: {e}"))?;
+
+    let state_snapshot = last_state
+        .ok_or_else(|| "failed to read contract state".to_string())?;
+
+    Ok(ConfirmBookingPaymentResponse {
+        booking_id: booking.id,
+        payment_id: updated_payment.id,
+        booking_status: booking.status,
+        payment_status: updated_payment.status,
+        contract_address,
+        transaction_ref: updated_payment.transaction_ref,
+        verified: false,
+        contract_state: state_snapshot.contract_state,
+        account_state: state_snapshot.account_state,
+        balance_nano_ton: state_snapshot.balance_nano_ton,
     })
 }

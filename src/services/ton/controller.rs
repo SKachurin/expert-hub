@@ -8,6 +8,7 @@ use crate::entities::{
 use crate::services::ton::{
     client::TonWorkerClient,
     dto::{
+        BookingContractStateResponse,
         ContractActionRequest,
         ContractActionResponse,
         CreateBookingContractRequest,
@@ -72,8 +73,8 @@ impl TonController {
                payment_id: payment.id,
                customer_telegram_id: booking.requested_by_telegram_id,
                expert_telegram_id: expert.telegram_id,
-               customer_wallet,
-               expert_wallet: expert.ton_wallet_address.clone(),
+               customer_wallet: map_wallet_for_ton_testnet(&customer_wallet),
+               expert_wallet: map_wallet_for_ton_testnet(&expert.ton_wallet_address),
                amount,
                currency,
                slot_start_unix,
@@ -183,5 +184,12 @@ impl TonController {
                 },
             )
             .await
+    }
+
+    pub async fn get_booking_contract_state(
+        &self,
+        contract_address: &str,
+    ) -> Result<BookingContractStateResponse, String> {
+        self.client.get_booking_contract_state(contract_address).await
     }
 }

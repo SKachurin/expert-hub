@@ -71,8 +71,46 @@ function bindDom() {
         walletRequiredClose: document.getElementById('wallet-required-close'),
         bookingConfirmClose: document.getElementById('booking-confirm-close'),
         bookingConfirmSubmit: document.getElementById('booking-confirm-submit'),
-        bookingConfirmText: document.getElementById('booking-confirm-text')
+        bookingConfirmText: document.getElementById('booking-confirm-text'),
+
+        paymentSuccessModal: document.getElementById('payment-success-modal'),
+        paymentSuccessOk: document.getElementById('payment-success-ok')
     };
+}
+
+function ensurePaymentSuccessModal() {
+    let modal = document.getElementById('payment-success-modal');
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'payment-success-modal';
+        modal.className = 'eh-modal-overlay hidden';
+
+        modal.innerHTML = `
+            <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-success-title">
+                <h3 id="payment-success-title">Payment successful</h3>
+
+                <p class="section-note" style="margin-top: 8px;">
+                    Your transaction was accepted by the wallet.
+                </p>
+
+                <p class="section-note" style="margin-top: 8px;">
+                    We are now waiting for confirmation from the expert.
+                </p>
+
+                <div class="btn-grid">
+                    <button id="payment-success-ok" class="btn btn-primary" type="button">OK</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+    }
+
+    els.paymentSuccessModal = modal;
+    els.paymentSuccessOk = document.getElementById('payment-success-ok');
+
+    return modal;
 }
 
 function ensureDebugPanel() {
@@ -576,6 +614,22 @@ function closeModal(el) {
 
 function openModal(el) {
     el?.classList.remove('hidden');
+}
+
+function closeTelegramMiniAppOrGoHome() {
+    const tg = window.Telegram?.WebApp;
+
+    debugBooking('closeTelegramMiniAppOrGoHome: called', {
+        hasTelegramWebApp: !!tg,
+        hasCloseFunction: typeof tg?.close === 'function'
+    });
+
+    if (tg && typeof tg.close === 'function') {
+        tg.close();
+        return;
+    }
+
+    window.location.href = '/';
 }
 
 function formatSlotLabel(slot) {
@@ -1279,21 +1333,19 @@ function bindEvents() {
                 traceId: txResult?.traceId || null
             });
 
-            if (!txResult?.boc) {
-                throw new Error('Wallet approved, but no BOC was returned. Cannot verify transaction yet.');
+            if (!txResult) {
+                throw new Error('Wallet did not return transaction result.');
             }
-
-            setDebugStatus('Wallet approved. Sending transaction BOC to backend…');
-
-            await confirmBookingPayment(requested.id, txResult);
 
             closeModal(els.bookingConfirmModal);
 
-            setDebugStatus('Payment sent. Waiting for on-chain confirmation.');
+            setDebugStatus('Payment sent. Waiting for expert confirmation.');
 
             selectedSlot = null;
             updateBookingUi();
-            await loadPublicPage();
+
+            openModal(els.paymentSuccessModal);
+
         } catch (error) {
             debugBooking('confirm submit: ERROR', {
                 message: error?.message,
@@ -1305,6 +1357,13 @@ function bindEvents() {
         } finally {
             els.bookingConfirmSubmit.disabled = false;
         }
+    });
+
+    els.paymentSuccessOk?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        closeTelegramMiniAppOrGoHome();
     });
 
     els.telegramRequiredClose?.addEventListener('click', (event) => {
@@ -1386,6 +1445,7 @@ window.forceDisconnectWallet = forceDisconnectWallet;
 
 function boot() {
     bindDom();
+    ensurePaymentSuccessModal();
     ensureDebugPanel();
     installGlobalErrorLogging();
 
@@ -1396,6 +1456,8 @@ function boot() {
         hasBookingDebugPanel: !!document.getElementById('booking-debug-panel'),
         hasBookBtn: !!els.bookBtn,
         hasConfirmBtn: !!els.bookingConfirmSubmit,
+        hasPaymentSuccessModal: !!els.paymentSuccessModal,
+        hasPaymentSuccessOk: !!els.paymentSuccessOk,
         hasTonConnectUiGlobal: !!window.TON_CONNECT_UI
     });
 

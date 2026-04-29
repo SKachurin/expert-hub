@@ -1,6 +1,7 @@
 use reqwest::Client;
 
 use crate::services::ton::dto::{
+    BookingContractStateResponse,
     ContractActionRequest,
     ContractActionResponse,
     CreateBookingContractRequest,
@@ -80,5 +81,35 @@ impl TonWorkerClient {
             .json::<ContractActionResponse>()
             .await
             .map_err(|e| format!("invalid ton worker action response: {e}"))
+    }
+
+    pub async fn get_booking_contract_state(
+        &self,
+        contract_address: &str,
+    ) -> Result<BookingContractStateResponse, String> {
+        let url = format!(
+            "{}/contracts/{}/state",
+            self.base_url,
+            urlencoding::encode(contract_address)
+        );
+
+        let response = self.http
+            .get(url)
+            .header("x-ton-worker-token", &self.auth_token)
+            .send()
+            .await
+            .map_err(|e| format!("ton worker state request failed: {e}"))?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("ton worker state failed with {status}: {text}"));
+        }
+
+        response
+            .json::<BookingContractStateResponse>()
+            .await
+            .map_err(|e| format!("invalid ton worker state response: {e}"))
     }
 }

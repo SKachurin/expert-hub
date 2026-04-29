@@ -3,8 +3,10 @@ use actix_web::{post, web, HttpResponse};
 use crate::{
     services::bookings::{
         begin_booking_payment,
+        confirm_booking_payment,
         create_booking_request,
         BeginPaymentRequest,
+        ConfirmBookingPaymentRequest,
         CreateBookingRequest,
     },
     state::AppState,
@@ -35,4 +37,18 @@ pub async fn begin_booking_payment_handler(
             "error": message
         })),
     }
-}   
+}
+
+#[post("/api/bookings/{booking_id}/confirm-payment")]
+pub async fn confirm_booking_payment_handler(
+    state: web::Data<AppState>,
+    booking_id: web::Path<i64>,
+    body: web::Json<ConfirmBookingPaymentRequest>,
+) -> HttpResponse {
+    match confirm_booking_payment(&state, booking_id.into_inner(), body.into_inner()).await {
+        Ok(saved) => HttpResponse::Ok().json(saved),
+        Err(message) => HttpResponse::BadRequest().json(serde_json::json!({
+            "error": message
+        })),
+    }
+}
