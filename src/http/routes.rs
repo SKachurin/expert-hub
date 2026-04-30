@@ -8,6 +8,7 @@ use crate::http::handlers::{
     google_calendar,
     health,
     pages,
+    telegram,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -35,4 +36,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
     cfg.service(pages::expert_public_page);
     cfg.service(pages::expert_edit_page);
+
+    cfg.service(telegram::telegram_webhook_handler);
 }

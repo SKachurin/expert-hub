@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/css/expert-public.css?v=20260409-3"/>
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
-    <script type="module" src="/js/expert-public.js?v=20260428-payment-success-1"></script>
+    <script type="module" src="/js/expert-public.js?v=20260428-payment-success-2"></script>
 </head>
 <body>
 <div class="app">
@@ -161,20 +161,22 @@
     </div>
 </div>
 
-<div id="payment-success-modal" class="eh-modal-overlay hidden">
-    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-success-title">
-        <h3 id="payment-success-title">Payment successful</h3>
+<div id="payment-confirmed-modal" class="eh-modal-overlay hidden">
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-confirmed-title">
+        <h3 id="payment-confirmed-title">Payment confirmed</h3>
 
         <p class="section-note" style="margin-top: 8px;">
-            Your transaction was accepted by the wallet.
+            The escrow contract is funded.
         </p>
 
         <p class="section-note" style="margin-top: 8px;">
-            We are now waiting for confirmation from the expert.
+            We notified the expert. Waiting for expert confirmation.
         </p>
 
         <div class="btn-grid">
-            <button id="payment-success-ok" class="btn btn-primary" type="button">OK</button>
+            <button id="payment-confirmed-ok" class="btn btn-primary" type="button">
+                OK
+            </button>
         </div>
     </div>
 </div>

@@ -41,11 +41,12 @@ pub struct ContractActionResponse {
     pub ok: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct BookingContractStateResponse {
     pub contract_address: String,
     pub account_state: String,
     pub balance_nano_ton: String,
     pub contract_state: Option<i32>,
+    pub contract_amount_nano_ton: Option<String>,
     pub is_funded: bool,
 }

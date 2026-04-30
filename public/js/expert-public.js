@@ -73,44 +73,94 @@ function bindDom() {
         bookingConfirmSubmit: document.getElementById('booking-confirm-submit'),
         bookingConfirmText: document.getElementById('booking-confirm-text'),
 
-        paymentSuccessModal: document.getElementById('payment-success-modal'),
-        paymentSuccessOk: document.getElementById('payment-success-ok')
+        paymentCheckingModal: document.getElementById('payment-checking-modal'),
+        paymentCheckingDetail: document.getElementById('payment-checking-detail'),
+        paymentCheckingClose: document.getElementById('payment-checking-close'),
+
+        paymentConfirmedModal: document.getElementById('payment-confirmed-modal'),
+        paymentConfirmedOk: document.getElementById('payment-confirmed-ok')
     };
 }
 
-function ensurePaymentSuccessModal() {
-    let modal = document.getElementById('payment-success-modal');
+function ensurePaymentModals() {
+    let checkingModal = document.getElementById('payment-checking-modal');
 
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'payment-success-modal';
-        modal.className = 'eh-modal-overlay hidden';
+    if (!checkingModal) {
+        checkingModal = document.createElement('div');
+        checkingModal.id = 'payment-checking-modal';
+        checkingModal.className = 'eh-modal-overlay hidden';
 
-        modal.innerHTML = `
-            <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-success-title">
-                <h3 id="payment-success-title">Payment successful</h3>
-
+        checkingModal.innerHTML = `
+            <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-checking-title">
+                <h3 id="payment-checking-title">Checking payment</h3>
+        
                 <p class="section-note" style="margin-top: 8px;">
-                    Your transaction was accepted by the wallet.
+                    Telegram Wallet returned control to Expert Hub.
                 </p>
-
-                <p class="section-note" style="margin-top: 8px;">
-                    We are now waiting for confirmation from the expert.
+        
+                <p id="payment-checking-detail" class="section-note" style="margin-top: 8px;">
+                    Checking escrow contract funding status…
                 </p>
-
-                <div class="btn-grid">
-                    <button id="payment-success-ok" class="btn btn-primary" type="button">OK</button>
+        
+                <div class="btn-grid" style="margin-top: 14px;">
+                    <button id="payment-checking-close" class="btn btn-secondary hidden" type="button">
+                        Close
+                    </button>
                 </div>
             </div>
         `;
 
-        document.body.appendChild(modal);
+        document.body.appendChild(checkingModal);
     }
 
-    els.paymentSuccessModal = modal;
-    els.paymentSuccessOk = document.getElementById('payment-success-ok');
+    let confirmedModal = document.getElementById('payment-confirmed-modal');
 
-    return modal;
+    if (!confirmedModal) {
+        confirmedModal = document.createElement('div');
+        confirmedModal.id = 'payment-confirmed-modal';
+        confirmedModal.className = 'eh-modal-overlay hidden';
+
+        confirmedModal.innerHTML = `
+            <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-confirmed-title">
+                <h3 id="payment-confirmed-title">Payment confirmed</h3>
+
+                <p class="section-note" style="margin-top: 8px;">
+                    The escrow contract is funded.
+                </p>
+
+                <p class="section-note" style="margin-top: 8px;">
+                    We notified the expert. Waiting for expert confirmation.
+                </p>
+
+                <div class="btn-grid">
+                    <button id="payment-confirmed-ok" class="btn btn-primary" type="button">OK</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(confirmedModal);
+    }
+
+    els.paymentCheckingModal = checkingModal;
+    els.paymentCheckingDetail = document.getElementById('payment-checking-detail');
+    els.paymentCheckingClose = document.getElementById('payment-checking-close');
+
+    els.paymentConfirmedModal = confirmedModal;
+    els.paymentConfirmedOk = document.getElementById('payment-confirmed-ok');
+}
+
+function setPaymentCheckingDetail(text) {
+    if (els.paymentCheckingDetail) {
+        els.paymentCheckingDetail.textContent = text;
+    }
+}
+
+function showPaymentCheckingCloseButton() {
+    els.paymentCheckingClose?.classList.remove('hidden');
+}
+
+function hidePaymentCheckingCloseButton() {
+    els.paymentCheckingClose?.classList.add('hidden');
 }
 
 function ensureDebugPanel() {
@@ -121,7 +171,6 @@ function ensureDebugPanel() {
         panel.id = 'booking-debug-panel';
         document.body.appendChild(panel);
     }
-
 
     return panel;
 }
@@ -202,6 +251,7 @@ function syncSelectedSlotWithPayload(payload) {
     for (const day of payload.days) {
         for (const slot of day.slots || []) {
             const slotKey = `${slot.start_utc}|${slot.duration_minutes}`;
+
             if (slotKey === selectedKey) {
                 stillExists = true;
                 break;
@@ -651,9 +701,11 @@ function updateBookingUi() {
 
     if (!enabled) {
         els.selectedSlotSummary?.classList.add('hidden');
+
         if (els.selectedSlotSummary) {
             els.selectedSlotSummary.textContent = '';
         }
+
         return;
     }
 
@@ -717,14 +769,11 @@ function initBookingTonConnect() {
         return;
     }
 
-    const tonConnectNetwork = ACTIVE_TON_CHAIN;
-
     debugBooking('initBookingTonConnect: creating TonConnectUI', {
         manifestUrl: `${window.location.origin}/tonconnect-manifest.json`,
         importedNetwork: TON_APP_NETWORK,
         activeNetworkLabel: ACTIVE_TON_NETWORK_LABEL,
         activeChain: ACTIVE_TON_CHAIN,
-        tonConnectNetwork,
         userAgent: navigator.userAgent,
         href: window.location.href,
         isTelegramMiniApp: !!window.Telegram?.WebApp,
@@ -755,7 +804,6 @@ function initBookingTonConnect() {
         });
 
         debugBooking('TonConnect connection request target applied', {
-            methodExists: typeof currentTonConnectUi.setConnectRequestParameters === 'function',
             requestedItem: {
                 name: 'ton_addr',
                 network: ACTIVE_TON_CHAIN
@@ -764,8 +812,6 @@ function initBookingTonConnect() {
     } else {
         debugBooking('TonConnect setConnectRequestParameters is not available');
     }
-
-    debugBooking('initBookingTonConnect: created', safeTonConnectUiSnapshot(currentTonConnectUi));
 
     if (currentTonConnectUi.wallet?.account?.address) {
         currentWalletAddress = currentTonConnectUi.wallet.account.address;
@@ -891,7 +937,6 @@ async function createBookingRequest() {
     });
 
     if (!telegramUser?.id) {
-        debugBooking('createBookingRequest: missing telegram user');
         openModal(els.telegramRequiredModal);
         return null;
     }
@@ -905,8 +950,6 @@ async function createBookingRequest() {
         requested_by_display_name: [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(' ') || telegramUser.first_name || 'Telegram user',
         requested_by_ton_wallet: currentWalletAddress || null
     };
-
-    debugBooking('createBookingRequest: payload', payload);
 
     const response = await fetch('/api/bookings/request', {
         method: 'POST',
@@ -937,11 +980,6 @@ async function beginBookingPayment(bookingId) {
         ton_wallet_customer: currentWalletAddress
     };
 
-    debugBooking('beginBookingPayment: payload', {
-        bookingId,
-        payload
-    });
-
     const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/begin-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -951,6 +989,7 @@ async function beginBookingPayment(bookingId) {
     const data = await response.json().catch(() => ({}));
 
     debugBooking('beginBookingPayment: response', {
+        bookingId,
         status: response.status,
         ok: response.ok,
         data
@@ -966,16 +1005,14 @@ async function beginBookingPayment(bookingId) {
 async function confirmBookingPayment(bookingId, txResult) {
     const payload = {
         boc: txResult?.boc || null,
-        trace_id: txResult?.traceId || null
+        trace_id: txResult?.traceId || txResult?.boc || `wallet_returned_${Date.now()}`
     };
 
-    debugBooking('confirmBookingPayment: payload', {
+    debugBooking('confirmBookingPayment: backend check requested', {
         bookingId,
-        payload: {
-            hasBoc: !!payload.boc,
-            bocLength: payload.boc ? String(payload.boc).length : 0,
-            trace_id: payload.trace_id
-        }
+        hasBoc: !!payload.boc,
+        bocLength: payload.boc ? String(payload.boc).length : 0,
+        trace_id: payload.trace_id ? String(payload.trace_id).slice(0, 80) : null
     });
 
     const response = await fetch(`/api/bookings/${encodeURIComponent(bookingId)}/confirm-payment`, {
@@ -986,7 +1023,7 @@ async function confirmBookingPayment(bookingId, txResult) {
 
     const data = await response.json().catch(() => ({}));
 
-    debugBooking('confirmBookingPayment: response', {
+    debugBooking('confirmBookingPayment: backend response', {
         status: response.status,
         ok: response.ok,
         data
@@ -997,6 +1034,41 @@ async function confirmBookingPayment(bookingId, txResult) {
     }
 
     return data;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function confirmBookingPaymentWithRetry(bookingId, txResult) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= 12; attempt += 1) {
+        try {
+            setDebugStatus(`Wallet returned. Checking payment… attempt ${attempt}/12`);
+
+            setPaymentCheckingDetail(
+                `Checking escrow contract funding status… attempt ${attempt}/12`
+            );
+
+            return await confirmBookingPayment(bookingId, txResult);
+        } catch (error) {
+            lastError = error;
+
+            debugBooking('confirmBookingPaymentWithRetry: attempt failed', {
+                bookingId,
+                attempt,
+                message: error?.message,
+                stack: error?.stack
+            });
+
+            if (attempt < 12) {
+                await sleep(5000);
+            }
+        }
+    }
+
+    throw lastError || new Error('Payment confirmation failed after retries.');
 }
 
 function normalizePaymentPayload(data) {
@@ -1045,14 +1117,8 @@ function normalizePaymentPayload(data) {
         raw: data
     };
 }
-async function sendTonBookingPayment(paymentPayload) {
-    debugBooking('sendTonBookingPayment: received payload', {
-        ...paymentPayload,
-        state_init_boc: paymentPayload?.state_init_boc
-            ? `[stateInit length ${String(paymentPayload.state_init_boc).length}]`
-            : null
-    });
 
+async function sendTonBookingPayment(paymentPayload) {
     if (!currentTonConnectUi) {
         throw new Error('TON Connect is not initialized.');
     }
@@ -1082,29 +1148,26 @@ async function sendTonBookingPayment(paymentPayload) {
     }
 
     const actualChain = String(currentTonConnectUi?.wallet?.account?.chain || '');
-    const expectedChain = ACTIVE_TON_CHAIN;
 
-    debugBooking('sendTonBookingPayment: chain state', {
-        actualChain,
-        actualChainLabel: describeTonChain(actualChain),
-        expectedChain,
-        expectedNetwork: ACTIVE_TON_NETWORK_LABEL,
-        wallet: safeWalletSnapshot(currentTonConnectUi.wallet)
-    });
-
-    if (actualChain !== expectedChain) {
+    if (actualChain !== ACTIVE_TON_CHAIN) {
         throw new Error(
             `Wrong wallet network. Expected ${ACTIVE_TON_NETWORK_LABEL}, got ${describeTonChain(actualChain)} (${actualChain}).`
         );
     }
 
-    const message = {
-        address: destinationAddress,
-        amount: amountNanoTon,
-        stateInit: paymentPayload.state_init_boc
+    const txPayload = {
+        validUntil: Math.floor(Date.now() / 1000) + 300,
+        network: ACTIVE_TON_CHAIN,
+        messages: [
+            {
+                address: destinationAddress,
+                amount: amountNanoTon,
+                stateInit: paymentPayload.state_init_boc
+            }
+        ]
     };
 
-    debugBooking('sendTonBookingPayment: tx target', {
+    debugBooking('sendTonBookingPayment: sending transaction to wallet', {
         contractAddress: destinationAddress,
         amountNanoTon,
         amountTonApprox: Number(amountNanoTon) / 1_000_000_000,
@@ -1112,88 +1175,50 @@ async function sendTonBookingPayment(paymentPayload) {
         stateInitLength: String(paymentPayload.state_init_boc).length
     });
 
-    const txPayload = {
-        validUntil: Math.floor(Date.now() / 1000) + 300,
-        network: ACTIVE_TON_CHAIN,
-        messages: [message]
-    };
-
-    debugBooking('sendTonBookingPayment: tx payload before wallet', {
-        ...txPayload,
-        messages: txPayload.messages.map((item) => ({
-            ...item,
-            stateInit: item.stateInit
-                ? `[stateInit length ${String(item.stateInit).length}]`
-                : null
-        }))
-    });
-
     setDebugStatus('Opening Telegram Wallet…');
 
-    let walletTimeoutId = null;
+    const result = await currentTonConnectUi.sendTransaction(txPayload);
 
-    try {
-        debugBooking('sendTonBookingPayment: calling sendTransaction now');
+    debugBooking('sendTonBookingPayment: wallet returned control', {
+        returnedAt: new Date().toISOString(),
+        hasBoc: !!result?.boc,
+        bocLength: result?.boc ? String(result.boc).length : 0,
+        result
+    });
 
-        const sendPromise = currentTonConnectUi.sendTransaction(txPayload);
+    return result;
+}
 
-        const timeoutPromise = new Promise((_, reject) => {
-            walletTimeoutId = setTimeout(() => {
-                reject(new Error('Wallet did not answer within 180 seconds.'));
-            }, 180000);
-        });
+async function showReturnedFromWalletAndConfirmPayment(bookingId, txResult) {
+    closeModal(els.bookingConfirmModal);
 
-        const result = await Promise.race([sendPromise, timeoutPromise]);
+    hidePaymentCheckingCloseButton();
+    openModal(els.paymentCheckingModal);
 
-        if (walletTimeoutId) {
-            clearTimeout(walletTimeoutId);
-        }
+    setPaymentCheckingDetail(
+        'Asking the backend to check the escrow contract funding status now…'
+    );
 
-        debugBooking('sendTonBookingPayment: wallet returned result', {
-            result,
-            hasBoc: !!result?.boc,
-            bocLength: result?.boc ? String(result.boc).length : 0
-        });
+    debugBooking('wallet returned: checking modal shown, calling backend now', {
+        bookingId,
+        returnedAt: new Date().toISOString(),
+        hasBoc: !!txResult?.boc
+    });
 
-        return result;
-    } catch (error) {
-        if (walletTimeoutId) {
-            clearTimeout(walletTimeoutId);
-        }
+    const confirmed = await confirmBookingPaymentWithRetry(bookingId, txResult);
 
-        const messageText = String(error?.message || '');
+    debugBooking('payment confirmed by backend', confirmed);
 
-        debugBooking('sendTonBookingPayment: ERROR', {
-            name: error?.name,
-            message: messageText,
-            stack: error?.stack,
-            currentWalletAddress,
-            tonConnectUi: safeTonConnectUiSnapshot(currentTonConnectUi),
-            txPayload: {
-                ...txPayload,
-                messages: txPayload.messages.map((item) => ({
-                    ...item,
-                    stateInit: item.stateInit
-                        ? `[stateInit length ${String(item.stateInit).length}]`
-                        : null
-                }))
-            }
-        });
+    closeModal(els.paymentCheckingModal);
 
-        if (messageText.includes('No enough funds') || messageText.includes('Insufficient funds')) {
-            throw new Error('Not enough TON in the connected wallet to send this transaction and cover network costs.');
-        }
+    selectedSlot = null;
+    updateBookingUi();
 
-        if (messageText.includes('Transaction was not sent')) {
-            throw new Error('Wallet did not complete the transaction. Please open Telegram Wallet and approve it there.');
-        }
+    setDebugStatus('Payment confirmed. Waiting for expert confirmation.');
 
-        if (messageText.includes('Wallet did not answer within 180 seconds.')) {
-            throw new Error('Wallet did not answer within 180 seconds. Telegram Wallet likely did not return control to the Mini App.');
-        }
+    openModal(els.paymentConfirmedModal);
 
-        throw error;
-    }
+    return confirmed;
 }
 
 function bindEvents() {
@@ -1202,12 +1227,9 @@ function bindEvents() {
         event.stopPropagation();
 
         try {
-            debugBooking('bookBtn click');
-
             const telegramUser = resolveTelegramUser();
 
             if (!telegramUser?.id) {
-                debugBooking('bookBtn click: missing telegram user');
                 openModal(els.telegramRequiredModal);
                 return;
             }
@@ -1217,14 +1239,12 @@ function bindEvents() {
             }
 
             if (!currentTonConnectUi) {
-                debugBooking('bookBtn click: opening wallet modal before TonConnect init');
                 openModal(els.walletRequiredModal);
                 initBookingTonConnect();
                 return;
             }
 
             if (!currentWalletAddress) {
-                debugBooking('bookBtn click: missing wallet address, opening wallet modal');
                 openModal(els.walletRequiredModal);
                 return;
             }
@@ -1236,13 +1256,6 @@ function bindEvents() {
                     `Wrong wallet network. Expected ${ACTIVE_TON_NETWORK_LABEL}, got ${describeTonChain(actualChain)} (${actualChain}).`
                 );
             }
-
-            debugBooking('bookBtn click: wallet state before confirm modal', {
-                currentWalletAddress,
-                tonConnectUi: safeTonConnectUiSnapshot(currentTonConnectUi),
-                expectedNetwork: ACTIVE_TON_NETWORK_LABEL,
-                expectedChain: ACTIVE_TON_CHAIN
-            });
 
             openBookingConfirmModal();
         } catch (error) {
@@ -1265,8 +1278,6 @@ function bindEvents() {
         }
 
         try {
-            debugBooking('confirm submit: clicked');
-
             els.bookingConfirmSubmit.disabled = true;
 
             if (!selectedSlot || !currentExpert || !currentDurationMinutes) {
@@ -1293,8 +1304,6 @@ function bindEvents() {
 
             const requested = await createBookingRequest();
 
-            debugBooking('confirm submit: booking request returned', requested);
-
             if (!requested?.id) {
                 throw new Error('Booking was not created: missing booking id.');
             }
@@ -1304,7 +1313,7 @@ function bindEvents() {
             const startedRaw = await beginBookingPayment(requested.id);
             const started = normalizePaymentPayload(startedRaw);
 
-            debugBooking('confirm submit: normalized payment payload', {
+            debugBooking('payment payload normalized', {
                 ...started,
                 state_init_boc: started?.state_init_boc
                     ? `[stateInit length ${String(started.state_init_boc).length}]`
@@ -1327,39 +1336,37 @@ function bindEvents() {
 
             const txResult = await sendTonBookingPayment(started);
 
-            debugBooking('confirm submit: wallet returned result', {
-                hasBoc: !!txResult?.boc,
-                bocLength: txResult?.boc ? String(txResult.boc).length : 0,
-                traceId: txResult?.traceId || null
-            });
-
             if (!txResult) {
-                throw new Error('Wallet did not return transaction result.');
+                throw new Error('Wallet returned without transaction result.');
             }
 
-            closeModal(els.bookingConfirmModal);
-
-            setDebugStatus('Payment sent. Waiting for expert confirmation.');
-
-            selectedSlot = null;
-            updateBookingUi();
-
-            openModal(els.paymentSuccessModal);
-
+            await showReturnedFromWalletAndConfirmPayment(requested.id, txResult);
         } catch (error) {
-            debugBooking('confirm submit: ERROR', {
+            debugBooking('booking/payment flow ERROR', {
                 message: error?.message,
                 stack: error?.stack
             });
 
             console.error(error);
+
             setDebugStatus(error.message || 'Booking failed.');
+
+            if (
+                els.paymentCheckingModal &&
+                !els.paymentCheckingModal.classList.contains('hidden')
+            ) {
+                setPaymentCheckingDetail(
+                    error.message || 'Payment confirmation failed. You can close this window and check the booking later.'
+                );
+
+                showPaymentCheckingCloseButton();
+            }
         } finally {
             els.bookingConfirmSubmit.disabled = false;
         }
     });
 
-    els.paymentSuccessOk?.addEventListener('click', (event) => {
+    els.paymentConfirmedOk?.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
 
@@ -1391,6 +1398,13 @@ function bindEvents() {
         event.preventDefault();
         currentOffsetDays += 7;
         loadPublicPage();
+    });
+
+    els.paymentCheckingClose?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        closeModal(els.paymentCheckingModal);
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -1445,7 +1459,7 @@ window.forceDisconnectWallet = forceDisconnectWallet;
 
 function boot() {
     bindDom();
-    ensurePaymentSuccessModal();
+    ensurePaymentModals();
     ensureDebugPanel();
     installGlobalErrorLogging();
 
@@ -1456,9 +1470,11 @@ function boot() {
         hasBookingDebugPanel: !!document.getElementById('booking-debug-panel'),
         hasBookBtn: !!els.bookBtn,
         hasConfirmBtn: !!els.bookingConfirmSubmit,
-        hasPaymentSuccessModal: !!els.paymentSuccessModal,
-        hasPaymentSuccessOk: !!els.paymentSuccessOk,
-        hasTonConnectUiGlobal: !!window.TON_CONNECT_UI
+        hasTonConnectUiGlobal: !!window.TON_CONNECT_UI,
+        hasPaymentCheckingDetail: !!els.paymentCheckingDetail,
+        hasPaymentCheckingClose: !!els.paymentCheckingClose,
+        hasPaymentConfirmedModal: !!els.paymentConfirmedModal,
+        hasPaymentConfirmedOk: !!els.paymentConfirmedOk,
     });
 
     initTelegramWebApp();
@@ -1482,7 +1498,6 @@ function boot() {
     bindEvents();
 
     loadPublicPage();
-
     updateBookingUi();
 }
 

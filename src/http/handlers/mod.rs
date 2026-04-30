@@ -5,3 +5,4 @@ pub mod experts;
 pub mod google_calendar;
 pub mod health;
 pub mod pages;
+pub mod telegram;

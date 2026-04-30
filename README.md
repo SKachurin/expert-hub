@@ -26,15 +26,15 @@ Expert Hub is a Telegram-first expert marketplace MVP built with Rust, Actix Web
 - [What is still ahead](#what-is-still-ahead)
 - [Related service docs](#related-service-docs)
 
-The current focus is:
-
 1. expert onboarding
 2. public expert pages
 3. real availability from Google Calendar
 4. booking request creation
 5. TON escrow preparation
-6. frontend TON Connect payment flow with successful wallet return handling 
-7. next: payment funding verification - correct data to smart contract(ton-worker), error wallet return/no return handling, expert confirmation, session detection, settlement, and reviews
+6. frontend TON Connect escrow deployment/funding flow
+7. backend on-chain funding verification through TON Worker
+8. Telegram Bot expert confirmation flow
+9. next: expert Confirm/Decline callbacks, session detection, settlement, and reviews
 
 The app is still not a full marketplace. It is now a working vertical slice around one public expert page and the beginning of the real booking/payment flow.
 
@@ -69,15 +69,19 @@ At this stage the project already has:
 - frontend receives contract address, StateInit, and TON amount
 - frontend sends a TON Connect transaction to deploy/fund the escrow contract
 - Telegram Wallet can approve the testnet transaction and return control to the Mini App
-- after wallet success, the customer sees a payment-success modal and can close the Telegram Mini App
+- after wallet return, the customer sees a checking-payment modal while backend verifies escrow funding
+- after backend verification succeeds, the customer sees a payment-confirmed modal and can close the Telegram Mini App
+- backend payment confirmation endpoint checks escrow contract state through TON Worker
+- successful escrow funding moves payment and booking to `funded`
+- backend sends Telegram Bot messages after successful funding verification
+- frontend shows a wallet-return checking modal while backend verifies the escrow
+- frontend shows a final payment-confirmed modal after backend verification succeeds
 
 Currently still not finished:
 
-- on-chain funding verification after wallet approval is still not fully wired into the booking lifecycle
-- payment funding verification is not implemented yet
-- booking does not yet move to `funded` after on-chain confirmation
-- expert Telegram confirmation flow is not implemented yet
-- TON Worker contract actions are not yet wired into the full booking lifecycle
+- expert Confirm/Decline callback handling still needs final end-to-end hardening
+- `expert_confirm` / `expert_decline` TON Worker actions still need final full-flow verification against funded escrow contracts
+- full session detection and later settlement actions are still pending
 - Telegram call watcher / research service is not implemented yet
 - review flow is not implemented yet
 - production Mini App navigation still needs final hardening/caching checks
@@ -305,12 +309,15 @@ Current flow:
 10. backend returns payment payload to frontend
 11. frontend calls TON Connect `sendTransaction()`
 
-Current limitation:
+Current behavior:
 
 * wallet approval and return to the Mini App works in the testnet flow
-* after wallet return, the frontend currently shows a success/waiting modal and closes the Mini App on OK
-* on-chain funding verification is not yet connected to the final booking lifecycle
-* booking/payment status does not yet reliably move to `funded` after wallet approval
+* after wallet return, the frontend immediately shows a checking-payment modal
+* the frontend calls `POST /api/bookings/{booking_id}/confirm-payment`
+* the backend checks the escrow contract state through TON Worker
+* if the contract is active and funded, backend moves `payment.status` and `booking.status` to `funded`
+* after successful funding verification, backend sends Telegram Bot notifications
+* the customer sees a final payment-confirmed modal
 
 ---
 
@@ -591,13 +598,12 @@ The worker must stay internal. It should not be called directly from the browser
 ## Current TON booking/payment flow
 
 Current implemented flow:
-
 1. customer opens `/e/{slug}`
 2. customer selects duration
 3. customer selects available slot
 4. customer connects TON wallet
 5. frontend creates booking request
-6. Rust backend validates selected slot
+6. Rust backend validates selected slot against current availability
 7. Rust backend creates `bookings` row with status `requested`
 8. frontend begins payment
 9. Rust backend verifies booking ownership by Telegram id
@@ -606,13 +612,21 @@ Current implemented flow:
 12. if booking currency is `USD`, backend fetches TON/USD rate and converts quote to TON
 13. backend builds TON Worker prepare payload
 14. backend calls `POST /contracts/prepare-booking`
-15. TON Worker prepares unique contract address and StateInit
+15. TON Worker prepares unique deterministic contract address and StateInit
 16. backend stores returned contract address / transaction reference
 17. backend returns payment data to frontend
 18. frontend calls TON Connect `sendTransaction()`
-19. Telegram Wallet approves the testnet transaction and returns control to the Mini App
-20. frontend shows a payment-success modal: the customer is told that the payment was sent and the system is waiting for expert confirmation
-21. OK closes the Telegram Mini App
+19. Telegram Wallet approves the testnet transaction
+20. Telegram Wallet returns control to the Mini App
+21. frontend immediately closes the booking-confirm modal and opens the payment-checking modal
+22. frontend calls `POST /api/bookings/{booking_id}/confirm-payment`
+23. backend asks TON Worker for escrow contract state
+24. backend verifies that the contract is active and funded
+25. backend updates `payments.status = funded`
+26. backend updates `bookings.status = funded`
+27. backend sends Telegram Bot notification messages
+28. frontend closes the checking modal and opens the payment-confirmed modal
+29. customer can close the Telegram Mini App
 
 Current frontend TON Connect transaction shape:
 
@@ -629,15 +643,67 @@ await tonConnectUi.sendTransaction({
     ]
 });
 ```
+When this succeeds, the customer wallet deploys and funds the prepared escrow contract.
 
-When this succeeds, the customer wallet should deploy and fund the prepared contract.
+    Important frontend rule:
 
-Current behavior:
+    Do not treat “wallet opened” as payment success.
+    Only treat “wallet returned + backend verified funded contract” as payment confirmation.
 
-* Telegram Wallet approves the testnet transaction and returns a result to the Mini App.
-* The app sends the transaction to the deterministic escrow contract address with `stateInit`, not to the expert wallet directly.
-* The frontend currently treats wallet return as a successful customer-side payment submission and shows a waiting-for-expert-confirmation modal.
-* Full backend funding verification and lifecycle transition to `funded` is still pending.
+    Current modal flow:
+
+    Confirm prepayment modal
+↓
+Telegram Wallet opens
+↓
+Wallet returns control
+↓
+Checking payment modal
+↓
+Backend /confirm-payment verifies escrow state
+↓
+Payment confirmed modal
+
+Current backend verification source:
+
+    TON Worker /contracts/{contract_address}/state
+
+Example verified state:
+```
+{
+    "account_state": "active",
+    "balance_nano_ton": "188000938",
+    "contract_state": 1,
+    "contract_amount_nano_ton": "38167939",
+    "is_funded": true
+}
+```
+Expected successful status transition:
+
+    booking.status: requested -> awaiting_payment -> funded
+payment.status: awaiting_payment -> funded
+
+---
+
+
+## Frontend payment modal flow
+
+The public expert page uses three payment-related modals.
+
+### 1. Confirm prepayment modal
+
+Existing modal:
+
+```html
+<div id="booking-confirm-modal" class="eh-modal-overlay hidden">
+...
+</div>
+```
+Purpose:
+
+    shows selected expert, duration, slot, and quoted prepayment
+starts the booking/payment flow when customer confirms
+
 ---
 
 ## TON Worker payload contract
@@ -687,6 +753,69 @@ Meaning:
 * `amount_nano_ton` — total amount customer wallet should send
 * `recommended_gas_buffer_nano_ton` — deploy/gas buffer included in total
 * `total_deploy_value_nano_ton` — explicit total for readability
+
+2. Checking payment modal
+
+Used after Telegram Wallet returns control to the Mini App.
+
+Required IDs:
+
+<div id="payment-checking-modal" class="eh-modal-overlay hidden">
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-checking-title">
+        <h3 id="payment-checking-title">Checking payment</h3>
+
+        <p class="section-note" style="margin-top: 8px;">
+            Telegram Wallet returned control to Expert Hub.
+        </p>
+
+        <p id="payment-checking-detail" class="section-note" style="margin-top: 8px;">
+            Checking escrow contract funding status…
+        </p>
+
+        <div class="btn-grid" style="margin-top: 14px;">
+            <button id="payment-checking-close" class="btn btn-secondary hidden" type="button">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+Purpose:
+
+confirms that wallet control returned
+calls backend /confirm-payment
+shows retry/checking progress
+only shows Close button if backend confirmation fails after retries
+3. Payment confirmed modal
+
+Used only after backend confirms funded escrow state.
+
+Required IDs:
+```
+<div id="payment-confirmed-modal" class="eh-modal-overlay hidden">
+    <div class="eh-modal" role="dialog" aria-modal="true" aria-labelledby="payment-confirmed-title">
+        <h3 id="payment-confirmed-title">Payment confirmed</h3>
+
+        <p class="section-note" style="margin-top: 8px;">
+            The escrow contract is funded.
+        </p>
+
+        <p class="section-note" style="margin-top: 8px;">
+            We notified the expert. Waiting for expert confirmation.
+        </p>
+
+        <div class="btn-grid">
+            <button id="payment-confirmed-ok" class="btn btn-primary" type="button">OK</button>
+        </div>
+    </div>
+</div>
+```
+Purpose:
+
+```
+tells customer that escrow funding was verified
+lets customer close the Mini App
+```
 
 ---
 
@@ -744,7 +873,7 @@ set_expert_rating
 
 Payout rules:
 
-```text
+```
 expert_decline    -> refund customer
 expert_no_show    -> refund customer
 session_connected -> pay expert
@@ -754,6 +883,124 @@ customer_no_show  -> pay expert
 The TON Worker does not decide these outcomes. The backend decides the outcome and instructs the TON Worker.
 
 ---
+## Telegram Bot confirmation flow
+
+Normal product communication uses the official Telegram Bot API.
+
+Telethon / research-service logic is not used for customer or expert notification messages. It is reserved only for future session/call detection if needed.
+
+After the customer wallet transaction returns, the backend must verify the escrow contract before contacting the expert.
+
+Verification checks:
+
+```
+contract is active
+getState == 1
+getBookingId == booking.id
+contract balance / amount check passes
+```
+After successful verification:
+
+payment.status = funded
+booking.status = funded
+
+Then the backend sends a Telegram bot message to the expert:
+
+New booking request:
+
+Customer: @username / Name
+Date: 1 May 2026
+Time: 14:00–14:30
+Duration: 30 minutes
+Amount: 0.187 TON
+
+The customer has funded the escrow contract for this slot.
+
+Do you confirm this booking?
+
+Inline buttons:
+
+✅ Confirm booking
+❌ Decline booking
+
+Callback data:
+
+booking_confirm:{booking_id}:{payment_id}
+booking_decline:{booking_id}:{payment_id}
+
+Confirm behavior:
+
+backend verifies callback sender is the expert
+backend verifies booking.status = funded
+backend verifies payment.status = funded
+backend calls TON Worker action expert_confirm
+booking.status = waiting_for_session
+booking.expert_confirmed_at = now
+customer is notified: expert has confirmed
+
+Decline behavior:
+
+backend verifies callback sender is the expert
+backend verifies booking.status = funded
+backend verifies payment.status = funded
+backend calls TON Worker action expert_decline
+booking.status = refunded
+payment.status = refunded
+booking.expert_rejected_at = now
+booking.rejected_reason = expert_declined
+customer is notified: expert declined, escrow refund triggered
+
+Status path:
+
+requested
+↓
+awaiting_payment
+↓
+funded
+↓ expert confirms
+waiting_for_session
+
+Decline path:
+
+requested
+↓
+awaiting_payment
+↓
+funded
+↓ expert declines
+refunded
+
+---
+
+## What is working now
+
+The project can currently demonstrate:
+
+1. expert opens onboarding
+2. expert connects Telegram
+3. expert connects TON wallet
+4. expert fills profile, rate, schedule, durations
+5. expert connects Google Calendar
+6. expert selects calendars
+7. backend saves expert and calendar connections
+8. public expert page is generated by slug
+9. public page loads expert data
+10. public page shows real availability
+11. customer selects slot
+12. backend creates booking request
+13. backend creates payment draft
+14. backend calls TON Worker
+15. TON Worker returns deterministic escrow contract address and StateInit
+16. frontend sends TON Connect escrow deployment/funding transaction
+17. Telegram Wallet approves the testnet transaction and returns control to the Mini App
+18. frontend shows checking-payment modal after wallet return
+19. frontend calls backend payment confirmation endpoint
+20. backend checks contract state through TON Worker
+21. backend confirms active/funded escrow state
+22. backend moves booking/payment to `funded`
+23. backend sends Telegram Bot messages
+24. frontend shows payment-confirmed modal
+25. customer can close the Telegram Mini App
 
 ## Telegram research / session detection direction
 
@@ -856,8 +1103,146 @@ Current important frontend logic:
 * `index.js` routes Telegram `startapp` params
 * `index.js` builds internal links inside Mini App and Telegram deep links outside Mini App
 * `expert-public.js` loads public expert profile and availability
-* `expert-public.js` handles slot selection, booking request, payment preparation, TON Connect transaction, wallet-return success modal, and Telegram Mini App close action
+* `expert-public.js` handles slot selection, booking request, payment preparation, TON Connect transaction, wallet-return checking modal, backend payment confirmation call, payment-confirmed modal, and Telegram Mini App close action
 * `app-config.js` controls dev/prod bot and TON network split
+
+
+## 6. the expert-public.js refactoring plan
+
+### Planned `expert-public.js` refactor
+
+`public/js/expert-public.js` has grown too large and now mixes several responsibilities:
+
+* DOM binding
+* debug panel
+* public expert rendering
+* reviews rendering
+* availability loading
+* slot selection
+* duration picker
+* owner edit-button visibility
+* TON Connect initialization
+* booking request creation
+* payment preparation
+* wallet transaction sending
+* payment confirmation polling
+* modal state management
+
+The file should be split into smaller modules.
+
+Suggested target structure:
+
+```
+public/js/expert-public/
+  index.js
+  state.js
+  dom.js
+  debug.js
+  api.js
+  render-expert.js
+  render-availability.js
+  render-reviews.js
+  booking-ui.js
+  booking-api.js
+  ton-connect.js
+  payment-flow.js
+  modals.js
+```
+Suggested responsibilities:
+```
+index.js
+  boot sequence
+  init Telegram WebApp
+  bind events
+  load initial page
+
+state.js
+  selectedSlot
+  currentExpert
+  currentWalletAddress
+  currentSlug
+  currentDurationMinutes
+  currentOffsetDays
+  request controller / request id
+
+dom.js
+  bindDom()
+  exports els
+
+debug.js
+  ensureDebugPanel()
+  debugBooking()
+  setDebugStatus()
+  installGlobalErrorLogging()
+
+api.js
+  loadPublicPage()
+  loadAvailabilityOnly()
+
+render-expert.js
+  renderExpert()
+  updateEditProfileButton()
+
+render-availability.js
+  renderSlots()
+  renderDurationPicker()
+  syncSelectedSlotWithPayload()
+
+render-reviews.js
+  renderReviews()
+
+booking-ui.js
+  deriveQuote()
+  updateBookingUi()
+  openBookingConfirmModal()
+
+booking-api.js
+  createBookingRequest()
+  beginBookingPayment()
+  confirmBookingPayment()
+  confirmBookingPaymentWithRetry()
+
+ton-connect.js
+  initBookingTonConnect()
+  sendTonBookingPayment()
+  safeWalletSnapshot()
+  describeTonChain()
+  forceDisconnectWallet()
+
+payment-flow.js
+  orchestrates:
+    create booking
+    begin payment
+    send TON transaction
+    handle wallet return
+    open checking modal
+    call backend confirmation
+    open confirmed modal
+
+modals.js
+  ensurePaymentModals()
+  openModal()
+  closeModal()
+  setPaymentCheckingDetail()
+  show/hide checking close button
+```
+
+Important refactor rule:
+
+Do not change the working payment sequence while splitting the file.
+First split without behavior changes. Then improve.
+
+Current working payment sequence that must be preserved:
+
+create booking
+→ begin payment
+→ send TON transaction
+→ wallet returns control
+→ show payment-checking modal immediately
+→ call backend /confirm-payment
+→ backend checks contract state through TON Worker
+→ show payment-confirmed modal
+
 
 ---
 
@@ -965,48 +1350,52 @@ docker logs -f ton-worker-experthub
 
 ---
 
-## What is working now
-
-The project can currently demonstrate:
-
-1. expert opens onboarding
-2. expert connects Telegram
-3. expert connects TON wallet
-4. expert fills profile, rate, schedule, durations
-5. expert connects Google Calendar
-6. expert selects calendars
-7. backend saves expert and calendar connections
-8. public expert page is generated by slug
-9. public page loads expert data
-10. public page shows real availability
-11. customer selects slot
-12. backend creates booking request
-13. backend creates payment draft
-14. backend calls TON Worker
-15. TON Worker returns deterministic escrow contract address and StateInit
-16. frontend sends TON Connect escrow deployment/funding transaction
-17. Telegram Wallet approves the testnet transaction and returns control to the Mini App
-18. frontend shows a payment-success modal and closes the Mini App after OK
-
----
-
 ## What is still ahead
 
 Next priorities:
 
-1. Add reliable payment funding verification after successful wallet approval.
-2. Move payment to `funded`.
-3. Move booking to `funded` / `waiting_for_session`.
-6. Add expert confirmation flow through Telegram bot.
-7. Wire `expert_confirm` and `expert_decline` contract actions.
-8. Add Telegram watcher service.
-9. Store watcher events in `telegram_call_events`.
-10. Apply final session outcomes.
-11. Wire `session_connected`, `customer_no_show`, and `expert_no_show` contract actions.
-12. Add review flow.
+1. Finish and harden Telegram Bot webhook deployment for expert Confirm/Decline buttons.
+2. Verify expert callback sender identity.
+3. Verify `expert_confirm` action end-to-end against a funded escrow contract.
+4. Verify `expert_decline` action end-to-end against a funded escrow contract.
+5. Move confirmed bookings from `funded` to `waiting_for_session`.
+6. Notify customer when expert confirms or declines.
+7. Add Telegram watcher / research service.
+8. Store watcher events in `telegram_call_events`.
+9. Apply final session outcomes.
+10. Wire `session_connected`, `customer_no_show`, and `expert_no_show` contract actions.
+11. Add review flow.
+12. Refactor `expert-public.js` into smaller modules without changing working behavior.
 13. Add marketplace discovery later.
 
 ---
+
+## Recent work summary
+
+Recent booking/payment work completed:
+
+* connected frontend booking flow to TON Connect transaction sending
+* changed payment target from expert wallet to deterministic escrow contract address
+* included `stateInit` in TON Connect transaction so the wallet can deploy/fund the escrow contract
+* fixed TON Worker RPC provider key issue for testnet contract state checks
+* confirmed funded testnet escrow contract state through TON Worker
+* added backend `/confirm-payment` flow that verifies contract state
+* confirmed manual payment verification updates booking/payment to `funded`
+* fixed active Telegram bot token selection for dev bot environment
+* verified Telegram Bot API sending through `TELEGRAM_DEV_BOT_TOKEN`
+* added backend notification behavior after successful funding verification
+* changed frontend flow from “wallet returned = success” to “wallet returned = show checking modal and ask backend”
+* removed frontend recovery-style payment confirmation logic
+* added payment-checking modal and payment-confirmed modal
+* confirmed the direct wallet-return → backend-check → confirmed-modal flow works
+
+Important debugging lesson:
+
+```
+Frontend should not decide final payment status.
+Wallet return only means the wallet handed control back.
+Backend must verify escrow contract state before booking/payment becomes funded.
+```
 
 ## Related service docs
 
@@ -1016,4 +1405,5 @@ Detailed TON Worker implementation notes belong in the separate worker repositor
 ton-worker-experthub/README.md
 ```
 
-The main Expert Hub README should describe only how the Rust backend integrates with the worker.
+
+---

@@ -19,6 +19,8 @@ use crate::{
     },
     state::AppState,
 };
+use actix_web::web;
+use crate::services::telegram_bot::TelegramBotClient;
 
 pub const BOOKING_STATUS_REQUESTED: &str = "requested";
 pub const BOOKING_STATUS_AWAITING_PAYMENT: &str = "awaiting_payment";
@@ -119,6 +121,140 @@ pub struct ConfirmBookingPaymentResponse {
     pub contract_state: Option<i32>,
     pub account_state: String,
     pub balance_nano_ton: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExpertBookingDecision {
+    Confirm,
+    Decline,
+}
+
+pub async fn process_expert_booking_decision(
+    state: &web::Data<AppState>,
+    booking_id: i64,
+    payment_id: i64,
+    expert_telegram_id: i64,
+    decision: ExpertBookingDecision,
+) -> Result<BookingSummaryResponse, String> {
+    let booking = bookings::Entity::find_by_id(booking_id)
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to load booking: {e}"))?
+        .ok_or_else(|| "booking not found".to_string())?;
+
+    let expert = experts::Entity::find_by_id(booking.expert_id)
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to load expert: {e}"))?
+        .ok_or_else(|| "expert not found".to_string())?;
+
+    if expert.telegram_id != expert_telegram_id {
+        return Err("only the expert can confirm or decline this booking".to_string());
+    }
+
+    if booking.status != BOOKING_STATUS_FUNDED {
+        return Err(format!(
+            "booking must be funded before expert decision, current status: {}",
+            booking.status
+        ));
+    }
+
+    let payment = payments::Entity::find()
+        .filter(payments::Column::Id.eq(payment_id))
+        .filter(payments::Column::BookingId.eq(booking.id))
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to load payment: {e}"))?
+        .ok_or_else(|| "payment not found".to_string())?;
+
+    if payment.status != PAYMENT_STATUS_FUNDED {
+        return Err(format!(
+            "payment must be funded before expert decision, current status: {}",
+            payment.status
+        ));
+    }
+
+    let contract_address = payment
+        .contract_address
+        .clone()
+        .ok_or_else(|| "payment has no contract address".to_string())?;
+
+    let ton_client = TonWorkerClient::new(
+        state.config.ton_worker_base_url.clone(),
+        state.config.ton_worker_auth_token.clone(),
+    );
+    let ton_controller = TonController::new(ton_client);
+
+    match decision {
+        ExpertBookingDecision::Confirm => {
+            ton_controller
+                .confirm_expert(
+                    contract_address.clone(),
+                    payment.id,
+                    booking.id,
+                )
+                .await?;
+
+            let now = Utc::now().fixed_offset();
+
+            let mut active: bookings::ActiveModel = booking.clone().into();
+            active.status = Set(BOOKING_STATUS_WAITING_FOR_SESSION.to_string());
+            active.expert_confirmed_at = Set(Some(now));
+            active.updated_at = Set(now);
+
+            let updated = active
+                .update(&state.db)
+                .await
+                .map_err(|e| format!("failed to update booking after expert confirm: {e}"))?;
+
+            let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
+            if let Err(err) = bot.notify_customer_expert_confirmed(&expert, &updated).await {
+                eprintln!("[telegram] failed to notify customer about expert confirmation: {err}");
+            }
+
+            summarize_booking(&state.db, updated.id).await
+        }
+
+        ExpertBookingDecision::Decline => {
+            ton_controller
+                .decline_expert(
+                    contract_address.clone(),
+                    payment.id,
+                    booking.id,
+                    Some("expert declined booking".to_string()),
+                )
+                .await?;
+
+            let now = Utc::now().fixed_offset();
+
+            let mut active_booking: bookings::ActiveModel = booking.clone().into();
+            active_booking.status = Set(BOOKING_STATUS_REFUNDED.to_string());
+            active_booking.expert_rejected_at = Set(Some(now));
+            active_booking.rejected_reason = Set(Some("expert_declined".to_string()));
+            active_booking.updated_at = Set(now);
+
+            let updated_booking = active_booking
+                .update(&state.db)
+                .await
+                .map_err(|e| format!("failed to mark booking as refunded: {e}"))?;
+
+            let mut active_payment: payments::ActiveModel = payment.clone().into();
+            active_payment.status = Set(PAYMENT_STATUS_REFUNDED.to_string());
+            active_payment.updated_at = Set(now);
+
+            active_payment
+                .update(&state.db)
+                .await
+                .map_err(|e| format!("failed to mark payment as refunded: {e}"))?;
+
+            let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
+            if let Err(err) = bot.notify_customer_expert_declined(&updated_booking).await {
+                eprintln!("[telegram] failed to notify customer about expert decline: {err}");
+            }
+
+            summarize_booking(&state.db, updated_booking.id).await
+        }
+    }
 }
 
 fn derive_amount(hourly_rate: Decimal, duration_minutes: i64) -> Result<Decimal, String> {
@@ -296,6 +432,138 @@ pub async fn create_booking_request(
         expires_at: booking.expires_at.to_rfc3339(),
     })
 }
+fn ton_decimal_string_to_nano_ton(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+
+    if trimmed.is_empty() {
+        return Err("TON amount is empty".to_string());
+    }
+
+    let mut parts = trimmed.split('.');
+
+    let whole = parts
+        .next()
+        .ok_or_else(|| "TON amount whole part is missing".to_string())?;
+
+    let fraction = parts.next().unwrap_or("");
+
+    if parts.next().is_some() {
+        return Err("TON amount has more than one decimal point".to_string());
+    }
+
+    if whole.is_empty() || !whole.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("invalid TON amount whole part: {trimmed}"));
+    }
+
+    if fraction.len() > 9 || !fraction.chars().all(|c| c.is_ascii_digit()) {
+        return Err(format!("invalid TON amount fractional part: {trimmed}"));
+    }
+
+    let mut fraction_padded = fraction.to_string();
+    while fraction_padded.len() < 9 {
+        fraction_padded.push('0');
+    }
+
+    let combined = format!("{whole}{fraction_padded}");
+    let normalized = combined.trim_start_matches('0');
+
+    Ok(if normalized.is_empty() {
+        "0".to_string()
+    } else {
+        normalized.to_string()
+    })
+}
+
+fn parse_nano_ton(value: &str, field: &str) -> Result<u128, String> {
+    value
+        .trim()
+        .parse::<u128>()
+        .map_err(|e| format!("failed to parse {field} as nanoTON: {e}"))
+}
+
+fn expected_escrow_amount_nano_ton_from_booking(
+    booking: &bookings::Model,
+) -> Result<u128, String> {
+    let value = booking
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("ton_payment"))
+        .and_then(|ton_payment| ton_payment.get("escrow_amount_nano_ton"))
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| {
+            "booking metadata is missing ton_payment.escrow_amount_nano_ton".to_string()
+        })?;
+
+    parse_nano_ton(value, "expected escrow amount")
+}
+
+async fn summarize_booking(
+    db: &sea_orm::DatabaseConnection,
+    booking_id: i64,
+) -> Result<BookingSummaryResponse, String> {
+    let booking = bookings::Entity::find_by_id(booking_id)
+        .one(db)
+        .await
+        .map_err(|e| format!("failed to load booking summary: {e}"))?
+        .ok_or_else(|| "booking not found".to_string())?;
+
+    let expert = experts::Entity::find_by_id(booking.expert_id)
+        .one(db)
+        .await
+        .map_err(|e| format!("failed to load expert for booking summary: {e}"))?
+        .ok_or_else(|| "expert not found".to_string())?;
+
+    let payment = payments::Entity::find()
+        .filter(payments::Column::BookingId.eq(booking.id))
+        .one(db)
+        .await
+        .map_err(|e| format!("failed to load payment for booking summary: {e}"))?;
+
+    let (
+        payment_status,
+        payment_id,
+        contract_address,
+        amount_nano_ton,
+    ) = if let Some(payment) = payment {
+        let amount_nano_ton = booking
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("ton_payment"))
+            .and_then(|ton_payment| ton_payment.get("wallet_send_amount_nano_ton"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+
+        (
+            Some(payment.status),
+            Some(payment.id),
+            payment.contract_address,
+            amount_nano_ton,
+        )
+    } else {
+        (None, None, None, None)
+    };
+
+    Ok(BookingSummaryResponse {
+        id: booking.id,
+        expert_id: booking.expert_id,
+        expert_slug: expert.public_slug,
+        status: booking.status,
+        payment_status,
+
+        payment_id,
+        contract_address,
+        state_init_boc: None,
+        amount_nano_ton,
+
+        requested_duration_minutes: booking.requested_duration_minutes,
+        amount_quoted: booking.amount_quoted,
+        currency: booking.currency,
+        slot_start: booking.slot_start.to_rfc3339(),
+        slot_end: booking.slot_end.to_rfc3339(),
+        payment_required_by: booking.payment_required_by.map(|v| v.to_rfc3339()),
+        expires_at: booking.expires_at.to_rfc3339(),
+    })
+}
 
 pub async fn begin_booking_payment(
     state: &AppState,
@@ -417,13 +685,16 @@ pub async fn begin_booking_payment(
         &saved_booking,
         &saved_payment,
         &expert,
-        escrow_amount_ton_string,
+        escrow_amount_ton_string.clone(),
         "TON".to_string(),
     )?;
 
     let contract = ton_controller
         .create_booking_contract(prepare_payload)
         .await?;
+
+    let escrow_amount_nano_ton =
+        ton_decimal_string_to_nano_ton(&escrow_amount_ton_string)?;
 
     let mut payment_model: payments::ActiveModel = saved_payment.clone().into();
     payment_model.contract_address = Set(Some(contract.contract_address.clone()));
@@ -438,15 +709,44 @@ pub async fn begin_booking_payment(
         .await
         .map_err(|e| format!("failed to store TON contract data: {e}"))?;
 
+    let mut metadata = saved_booking.metadata.clone().unwrap_or_else(|| json!({}));
+
+    if !metadata.is_object() {
+        metadata = json!({});
+    }
+
+    if let Some(object) = metadata.as_object_mut() {
+        object.insert(
+            "ton_payment".to_string(),
+            json!({
+                "contract_address": contract.contract_address.clone(),
+                "escrow_amount_ton": escrow_amount_ton_string.clone(),
+                "escrow_amount_nano_ton": escrow_amount_nano_ton.clone(),
+                "wallet_send_amount_nano_ton": contract.amount_nano_ton.clone(),
+                "recommended_gas_buffer_nano_ton": contract.recommended_gas_buffer_nano_ton.clone(),
+                "total_deploy_value_nano_ton": contract.total_deploy_value_nano_ton.clone()
+            }),
+        );
+    }
+
+    let mut booking_metadata_model: bookings::ActiveModel = saved_booking.clone().into();
+    booking_metadata_model.metadata = Set(Some(metadata));
+    booking_metadata_model.updated_at = Set(now);
+
+    booking_metadata_model
+        .update(&state.db)
+        .await
+        .map_err(|e| format!("failed to store TON payment metadata on booking: {e}"))?;
+
     Ok(BeginPaymentResponse {
         booking_id: saved_booking.id,
         payment_id: updated_payment.id,
         contract_address: contract.contract_address.clone(),
-        destination_address: contract.contract_address,
-        state_init_boc: contract.state_init_boc,
-        amount_nano_ton: contract.amount_nano_ton,
-        recommended_gas_buffer_nano_ton: contract.recommended_gas_buffer_nano_ton,
-        total_deploy_value_nano_ton: contract.total_deploy_value_nano_ton,
+        destination_address: contract.contract_address.clone(),
+        state_init_boc: contract.state_init_boc.clone(),
+        amount_nano_ton: contract.amount_nano_ton.clone(),
+        recommended_gas_buffer_nano_ton: contract.recommended_gas_buffer_nano_ton.clone(),
+        total_deploy_value_nano_ton: contract.total_deploy_value_nano_ton.clone(),
         payment_status: updated_payment.status,
     })
 }
@@ -456,16 +756,12 @@ pub async fn confirm_booking_payment(
     booking_id: i64,
     body: ConfirmBookingPaymentRequest,
 ) -> Result<ConfirmBookingPaymentResponse, String> {
-    let boc = body
+    let boc_len = body
         .boc
         .as_deref()
         .map(str::trim)
         .filter(|v| !v.is_empty())
-        .ok_or_else(|| "transaction BOC is required".to_string())?;
-
-    if boc.len() < 100 {
-        return Err("transaction BOC is too short".to_string());
-    }
+        .map(|v| v.len());
 
     let booking = bookings::Entity::find_by_id(booking_id)
         .one(&state.db)
@@ -504,7 +800,8 @@ pub async fn confirm_booking_payment(
         .map(str::trim)
         .filter(|v| !v.is_empty())
         .map(|v| format!("wallet_trace:{v}"))
-        .unwrap_or_else(|| format!("wallet_boc_len:{}", boc.len()));
+        .or_else(|| boc_len.map(|len| format!("wallet_boc_len:{len}")))
+        .unwrap_or_else(|| "contract_state_verified".to_string());
 
     let ton_client = TonWorkerClient::new(
         state.config.ton_worker_base_url.clone(),
@@ -515,12 +812,49 @@ pub async fn confirm_booking_payment(
 
     let mut last_state = None;
 
+    let was_already_funded = booking.status == BOOKING_STATUS_FUNDED
+        || payment.status == PAYMENT_STATUS_FUNDED;
+
+    let expert = experts::Entity::find_by_id(booking.expert_id)
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to load expert: {e}"))?
+        .ok_or_else(|| "expert not found".to_string())?;
+
+    let expected_escrow_amount_nano_ton =
+        expected_escrow_amount_nano_ton_from_booking(&booking)?;
+
     for attempt in 0..15 {
         let contract_state = ton_controller
             .get_booking_contract_state(&contract_address)
             .await?;
 
-        if contract_state.is_funded {
+       if contract_state.is_funded {
+           let contract_amount_nano_ton = contract_state
+               .contract_amount_nano_ton
+               .as_deref()
+               .ok_or_else(|| "contract state is missing contract_amount_nano_ton".to_string())
+               .and_then(|value| parse_nano_ton(value, "contract amount"))?;
+
+           if contract_amount_nano_ton != expected_escrow_amount_nano_ton {
+               return Err(format!(
+                   "contract amount check failed: contract amount {} nanoTON does not match expected escrow amount {} nanoTON",
+                   contract_amount_nano_ton,
+                   expected_escrow_amount_nano_ton
+               ));
+           }
+
+           let actual_balance_nano_ton =
+               parse_nano_ton(&contract_state.balance_nano_ton, "contract balance")?;
+
+           if actual_balance_nano_ton < expected_escrow_amount_nano_ton {
+               return Err(format!(
+                   "contract is funded but balance check failed: contract balance {} nanoTON is below expected escrow amount {} nanoTON",
+                   actual_balance_nano_ton,
+                   expected_escrow_amount_nano_ton
+               ));
+           }
+
             let mut booking_model: bookings::ActiveModel = booking.clone().into();
             booking_model.status = Set(BOOKING_STATUS_FUNDED.to_string());
             booking_model.updated_at = Set(now);
@@ -539,6 +873,32 @@ pub async fn confirm_booking_payment(
                 .update(&state.db)
                 .await
                 .map_err(|e| format!("failed to mark payment funded: {e}"))?;
+
+            if !was_already_funded {
+                let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
+
+                if let Err(err) = bot
+                    .send_expert_booking_confirmation_request(
+                        &expert,
+                        &updated_booking,
+                        &updated_payment,
+                    )
+                    .await
+                {
+                    eprintln!(
+                        "[telegram] failed to send expert booking confirmation request: {err}"
+                    );
+                }
+
+                if let Err(err) = bot
+                    .notify_customer_payment_confirmed(&updated_booking)
+                    .await
+                {
+                    eprintln!(
+                        "[telegram] failed to notify customer about payment confirmation: {err}"
+                    );
+                }
+            }
 
             return Ok(ConfirmBookingPaymentResponse {
                 booking_id: updated_booking.id,
