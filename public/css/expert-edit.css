@@ -130,3 +130,54 @@
     height: 20px;
     display: block;
 }
+
+.danger-card {
+    border-color: rgba(255, 77, 77, 0.38);
+    background:
+            radial-gradient(700px 220px at 50% 0%, rgba(255, 77, 77, 0.13), transparent 60%),
+            linear-gradient(180deg, var(--panel), var(--panel-2));
+}
+
+.danger-title {
+    color: #ff6b6b;
+}
+
+.btn-danger {
+    background: linear-gradient(180deg, #ff3b3b, #c91414);
+    color: #fff;
+    border: 1px solid rgba(255, 120, 120, 0.6);
+    box-shadow: 0 14px 36px rgba(255, 0, 0, 0.24);
+}
+
+.btn-danger:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.delete-bookings-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+    max-height: 260px;
+    overflow: auto;
+}
+
+.delete-booking-item {
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.delete-booking-title {
+    font-weight: 800;
+    color: var(--text);
+}
+
+.delete-booking-meta {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.35;
+    word-break: break-word;
+}

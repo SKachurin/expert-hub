@@ -6,6 +6,7 @@ import { initTonConnectForEdit } from './wallet.js';
 import { resolveTelegramUser, renderProfileCard, bindTelegramWindowAuth } from './telegram.js';
 import { loadExpertData, saveExpertData } from './api.js';
 import { setDebugStatus } from './form.js';
+import { bindDeleteProfileFlow } from './delete-profile.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     bindChipGroup(els.workingDaysGroup);
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (state.currentTelegramUser?.id) {
         await loadExpertData();
         initTonConnectForEdit();
+        bindDeleteProfileFlow();
     } else {
         setDebugStatus('Authorize with Telegram to load this profile.');
     }

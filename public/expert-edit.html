@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/css/expert-edit.css"/>
     <script src="https://telegram.org/js/telegram-web-app.js?61"></script>
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
-    <script type="module" src="/js/expert-edit/index.js?v=20260409-1"></script>
+    <script type="module" src="/js/expert-edit/index.js??v=20260501-delete-profile-1"></script>
 </head>
 <body>
 <div class="app">
@@ -232,6 +232,63 @@
             Save profile changes
         </button>
     </section>
+
+    <section class="panel danger-card">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title danger-title">Danger zone</h2>
+                <p class="section-note">
+                    Delete your public expert profile and stop accepting new bookings.
+                </p>
+            </div>
+        </div>
+
+        <button id="delete-profile-btn" class="btn btn-danger" type="button">
+            Delete my expert profile
+        </button>
+    </section>
+
+    <div id="delete-profile-modal" class="eh-modal-overlay hidden">
+        <div class="eh-modal" role="dialog" aria-modal="true">
+            <h3>Delete expert profile?</h3>
+
+            <p class="section-note" style="margin-top: 8px;">
+                Are you sure you want to delete your expert profile?
+                Your public page will be hidden and your profile data will be erased where possible.
+            </p>
+
+            <div class="btn-grid">
+                <button id="delete-profile-confirm-btn" class="btn btn-danger" type="button">
+                    Yes, delete my profile
+                </button>
+                <button id="delete-profile-cancel-btn" class="btn btn-secondary" type="button">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-profile-paid-bookings-modal" class="eh-modal-overlay hidden">
+        <div class="eh-modal" role="dialog" aria-modal="true">
+            <h3>Future paid bookings found</h3>
+
+            <p class="section-note" style="margin-top: 8px;">
+                You have future paid bookings with funded contracts.
+                If you continue, they will be treated as expert no-show and sent to refund processing.
+            </p>
+
+            <div id="delete-profile-paid-bookings-list" class="delete-bookings-list"></div>
+
+            <div class="btn-grid">
+                <button id="delete-profile-force-btn" class="btn btn-danger" type="button">
+                    Refund these bookings and delete profile
+                </button>
+                <button id="delete-profile-paid-bookings-cancel-btn" class="btn btn-secondary" type="button">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
 
     <div id="debug-status" class="debug"></div>
 </div>

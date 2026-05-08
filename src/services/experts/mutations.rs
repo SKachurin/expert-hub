@@ -4,11 +4,13 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
 };
 
-use crate::entities::calendar_connections;
-use crate::entities::experts;
+use crate::entities::{calendar_connections, experts};
 
 use super::dto::{
-    UpdateExpertProfileRequest, UpsertExpertData, UpsertExpertRequest, UpsertExpertResponse,
+    UpdateExpertProfileRequest,
+    UpsertExpertData,
+    UpsertExpertRequest,
+    UpsertExpertResponse,
 };
 use super::helpers::{
     build_display_name, generate_unique_public_slug, optional_trimmed_string, parse_time,
@@ -59,6 +61,7 @@ where
     validate_data(&data)?;
 
     let now = Utc::now().fixed_offset();
+
     let display_name = if data.display_name.trim().is_empty() {
         build_display_name(&data.first_name, &data.last_name, &data.username)
     } else {
@@ -78,6 +81,14 @@ where
 
     let model = match existing {
         Some(existing) => {
+            let was_deleted_profile = existing.public_slug.starts_with("deleted-");
+
+            let restored_public_slug = if was_deleted_profile {
+                Some(generate_unique_public_slug(db, &data.username, &display_name).await?)
+            } else {
+                None
+            };
+
             let mut active: experts::ActiveModel = existing.into();
 
             active.first_name = Set(data.first_name.clone());
@@ -88,13 +99,22 @@ where
             active.ton_wallet_address = Set(data.ton_wallet_address.clone());
             active.photo_url = Set(data.photo_url.clone());
             active.hourly_rate = Set(data.hourly_rate);
-            active.currency = Set(data.currency.clone());
+            active.currency = Set(data.currency.trim().to_uppercase());
             active.timezone = Set(data.timezone.clone());
             active.working_days = Set(data.working_days.clone());
             active.work_start_time = Set(work_start_time);
             active.work_end_time = Set(work_end_time);
             active.allowed_session_durations = Set(data.allowed_session_durations.clone());
             active.is_bookable = Set(data.is_bookable);
+
+            if was_deleted_profile {
+                active.is_active = Set(true);
+
+                if let Some(public_slug) = restored_public_slug {
+                    active.public_slug = Set(public_slug);
+                }
+            }
+
             active.updated_at = Set(now);
 
             active
@@ -102,6 +122,7 @@ where
                 .await
                 .map_err(|e| format!("failed to update expert: {e}"))?
         }
+
         None => {
             let public_slug =
                 generate_unique_public_slug(db, &data.username, &display_name).await?;
@@ -165,6 +186,7 @@ where
     validate_update_data(&data)?;
 
     let slug = slug.trim().to_string();
+
     if slug.is_empty() {
         return Err("slug is required".to_string());
     }
@@ -185,7 +207,9 @@ where
     let now = Utc::now().fixed_offset();
 
     let mut active: experts::ActiveModel = existing.into();
+
     active.display_name = Set(data.display_name.trim().to_string());
+
     active.telegram_bio = Set(
         data.telegram_bio
             .as_ref()
@@ -233,6 +257,7 @@ where
 
         for row in rows {
             let mut active_row: calendar_connections::ActiveModel = row.into();
+
             active_row.is_primary = Set(active_row.id.clone().unwrap() == primary_id);
             active_row.updated_at = Set(now);
 

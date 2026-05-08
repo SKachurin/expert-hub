@@ -221,6 +221,45 @@ impl TelegramBotClient {
         )
         .await
     }
+
+    pub async fn notify_expert_profile_deleted_no_paid_bookings(
+        &self,
+        expert_telegram_id: i64,
+    ) -> Result<(), String> {
+        self.send_message(
+            expert_telegram_id,
+            "Your Expert Hub profile has been deleted.\n\nYour public page is no longer visible and your profile data is being erased where possible."
+                .to_string(),
+            None,
+        )
+        .await
+    }
+
+    pub async fn notify_expert_profile_deleted_refunds_started(
+        &self,
+        expert_telegram_id: i64,
+    ) -> Result<(), String> {
+        self.send_message(
+            expert_telegram_id,
+            "Your Expert Hub profile has been deleted.\n\nYour public page is no longer visible. Future paid bookings, if any, have been sent to refund processing."
+                .to_string(),
+            None,
+        )
+        .await
+    }
+
+    pub async fn notify_customer_expert_deleted_refund_started(
+        &self,
+        customer_telegram_id: i64,
+        booking_id: i64,
+    ) -> Result<(), String> {
+        let text = format!(
+            "The expert has deleted their Expert Hub profile.\n\nYour upcoming booking #{} has been cancelled. The funded escrow contract refund has been started.\n\nSorry for the inconvenience.",
+            booking_id
+        );
+
+        self.send_message(customer_telegram_id, text, None).await
+    }
 }
 
 fn format_booking_date(value: &DateTime<FixedOffset>) -> String {

@@ -68,3 +68,60 @@ export async function saveExpertData() {
         }
     }
 }
+
+export async function previewDeleteExpertProfile() {
+    const slug = getSlugFromPath();
+
+    if (!slug) {
+        throw new Error('Missing slug in URL.');
+    }
+
+    if (!state.currentTelegramUser?.id) {
+        throw new Error('Connect Telegram first.');
+    }
+
+    const response = await fetch(`/api/experts/${encodeURIComponent(slug)}/delete-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            telegram_id: state.currentTelegramUser.id
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(data.error || `Delete preview failed: ${response.status}`);
+    }
+
+    return data;
+}
+
+export async function deleteExpertProfile(confirmPaidFutureBookings = false) {
+    const slug = getSlugFromPath();
+
+    if (!slug) {
+        throw new Error('Missing slug in URL.');
+    }
+
+    if (!state.currentTelegramUser?.id) {
+        throw new Error('Connect Telegram first.');
+    }
+
+    const response = await fetch(`/api/experts/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            telegram_id: state.currentTelegramUser.id,
+            confirm_paid_future_bookings: confirmPaidFutureBookings
+        })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(data.error || `Delete failed: ${response.status}`);
+    }
+
+    return data;
+}

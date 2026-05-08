@@ -152,3 +152,47 @@ pub struct PopularExpertCardResponse {
     pub expert_rating: Decimal,
     pub reviews_count: i32,
 }
+
+#[derive(Debug, serde::Deserialize)]
+pub struct DeleteExpertPreviewRequest {
+    pub telegram_id: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct DeleteExpertRequest {
+    pub telegram_id: i64,
+
+    #[serde(default)]
+    pub confirm_paid_future_bookings: bool,
+}
+
+#[derive(Debug, serde::Serialize, Clone)]
+pub struct DeleteExpertPaidBookingPreview {
+    pub booking_id: i64,
+    pub payment_id: i64,
+    pub customer_telegram_id: i64,
+    pub customer_username: Option<String>,
+    pub customer_display_name: Option<String>,
+    pub slot_start: String,
+    pub slot_end: String,
+    pub duration_minutes: i32,
+    pub amount_quoted: String,
+    pub currency: String,
+    pub booking_status: String,
+    pub payment_status: String,
+    pub contract_address: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DeleteExpertPreviewResponse {
+    pub has_paid_future_bookings: bool,
+    pub paid_future_bookings: Vec<DeleteExpertPaidBookingPreview>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DeleteExpertResponse {
+    pub deleted: bool,
+    pub refunds_dispatched: bool,
+    pub paid_future_bookings_count: usize,
+    pub redirect_to: String,
+}

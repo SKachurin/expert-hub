@@ -17,6 +17,10 @@ use crate::{
             upsert_expert,
             UpdateExpertProfileRequest,
             UpsertExpertRequest,
+            delete_expert_profile_by_slug,
+            preview_delete_expert_by_slug,
+            DeleteExpertPreviewRequest,
+            DeleteExpertRequest,
         },
     },
     state::AppState,
@@ -314,6 +318,46 @@ pub async fn get_popular_experts_handler(
         Err(err) => HttpResponse::BadRequest().json(serde_json::json!({
             "status": "error",
             "message": err
+        })),
+    }
+}
+
+#[post("/api/experts/{slug}/delete-preview")]
+pub async fn preview_delete_expert_handler(
+    state: web::Data<AppState>,
+    slug: web::Path<String>,
+    body: web::Json<DeleteExpertPreviewRequest>,
+) -> HttpResponse {
+    match preview_delete_expert_by_slug(
+        &state.db,
+        slug.into_inner(),
+        body.into_inner(),
+    )
+    .await
+    {
+        Ok(result) => HttpResponse::Ok().json(result),
+        Err(message) => HttpResponse::BadRequest().json(serde_json::json!({
+            "error": message
+        })),
+    }
+}
+
+#[delete("/api/experts/{slug}")]
+pub async fn delete_expert_handler(
+    state: web::Data<AppState>,
+    slug: web::Path<String>,
+    body: web::Json<DeleteExpertRequest>,
+) -> HttpResponse {
+    match delete_expert_profile_by_slug(
+        state.get_ref(),
+        slug.into_inner(),
+        body.into_inner(),
+    )
+    .await
+    {
+        Ok(result) => HttpResponse::Ok().json(result),
+        Err(message) => HttpResponse::BadRequest().json(serde_json::json!({
+            "error": message
         })),
     }
 }

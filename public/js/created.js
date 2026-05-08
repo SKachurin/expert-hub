@@ -30,7 +30,19 @@ function getSlugFromUrl() {
 
 async function copyText(value, successText) {
     try {
-        await navigator.clipboard.writeText(value);
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(value);
+        } else {
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            textarea.remove();
+        }
         setDebugStatus(successText);
     } catch (err) {
         console.error(err);

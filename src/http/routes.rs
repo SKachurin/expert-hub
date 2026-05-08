@@ -25,6 +25,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 
     cfg.service(experts::get_edit_expert_handler);
     cfg.service(experts::update_edit_expert_handler);
+    cfg.service(experts::preview_delete_expert_handler);
+    cfg.service(experts::delete_expert_handler);
     cfg.service(experts::delete_calendar_connection_handler);
     cfg.service(experts::get_public_expert_handler);
     cfg.service(experts::get_popular_experts_handler);

@@ -304,12 +304,13 @@ body {
 .popular-experts-grid {
     margin-top: 14px;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
 }
 
 .popular-expert-tile {
     display: block;
+    min-width: 0;
     text-decoration: none;
     color: var(--text);
     padding: 14px;
@@ -366,6 +367,11 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
 }
 
 .popular-expert-meta {
@@ -397,4 +403,16 @@ body {
     color: var(--muted-2);
     font-size: 13px;
     line-height: 1.45;
+}
+
+@media (min-width: 560px) {
+        .popular-experts-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+}
+
+@media (max-width: 340px) {
+        .popular-experts-grid {
+            grid-template-columns: 1fr;
+        }
 }

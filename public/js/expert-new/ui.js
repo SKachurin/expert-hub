@@ -161,7 +161,7 @@ export function validateProfileDraft(updateRegisterButtonState) {
         els.displayName.value.trim() !== '' &&
         els.timezone.value.trim() !== '' &&
         els.hourlyRate.value.trim() !== '' &&
-        Number(els.hourlyRate.value) >= 1 &&
+        Number(els.hourlyRate.value) >=  0.01 &&
         els.currency.value.trim() !== '' &&
         els.workStart.value.trim() !== '' &&
         els.workEnd.value.trim() !== '' &&
@@ -183,7 +183,7 @@ export function updateRegisterButtonState(currentTelegramUser, currentWallet) {
         els.displayName.value.trim() !== '' &&
         els.timezone.value.trim() !== '' &&
         els.hourlyRate.value.trim() !== '' &&
-        Number(els.hourlyRate.value) >= 1 &&
+        Number(els.hourlyRate.value) >=  0.01 &&
         els.currency.value.trim() !== '' &&
         els.workStart.value.trim() !== '' &&
         els.workEnd.value.trim() !== '' &&

@@ -30,4 +30,15 @@ export const els = {
     newWalletReadonly: document.getElementById('new-wallet-readonly'),
     existingCalendarList: document.getElementById('existing-calendar-list'),
     connectGoogleCalendarBtn: document.getElementById('connect-google-calendar-btn'),
+
+    deleteProfileBtn: document.getElementById('delete-profile-btn'),
+
+    deleteProfileModal: document.getElementById('delete-profile-modal'),
+    deleteProfileConfirmBtn: document.getElementById('delete-profile-confirm-btn'),
+    deleteProfileCancelBtn: document.getElementById('delete-profile-cancel-btn'),
+
+    deleteProfilePaidBookingsModal: document.getElementById('delete-profile-paid-bookings-modal'),
+    deleteProfilePaidBookingsList: document.getElementById('delete-profile-paid-bookings-list'),
+    deleteProfileForceBtn: document.getElementById('delete-profile-force-btn'),
+    deleteProfilePaidBookingsCancelBtn: document.getElementById('delete-profile-paid-bookings-cancel-btn'),
 };

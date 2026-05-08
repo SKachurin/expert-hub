@@ -1,4 +1,6 @@
 pub mod calendars;
+pub mod deletion;
+pub mod deletion_refunds;
 pub mod dto;
 pub mod helpers;
 pub mod mutations;
@@ -14,6 +16,11 @@ pub use dto::{
     UpsertExpertData,
     UpsertExpertRequest,
     UpsertExpertResponse,
+    DeleteExpertPaidBookingPreview,
+    DeleteExpertPreviewRequest,
+    DeleteExpertPreviewResponse,
+    DeleteExpertRequest,
+    DeleteExpertResponse,
 };
 
 pub use mutations::{
@@ -26,4 +33,9 @@ pub use queries::{
     get_edit_expert_by_slug,
     get_popular_experts,
     get_public_expert_by_slug,
+};
+
+pub use deletion::{
+    delete_expert_profile_by_slug,
+    preview_delete_expert_by_slug,
 };
