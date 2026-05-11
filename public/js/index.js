@@ -41,7 +41,7 @@ function maybeRedirectFromTelegramStartParam() {
 }
 
 function isMiniAppContext() {
-    return !!window.Telegram?.WebApp;
+    return !!window.Telegram?.WebApp?.initData;
 }
 
 function buildTelegramMiniAppPublicShareLink(slug) {
@@ -211,7 +211,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (registerExpertBtnEl) {
-        registerExpertBtnEl.href = buildRegisterHref();
+        const registerHref = buildRegisterHref();
+
+        if ('href' in registerExpertBtnEl) {
+            registerExpertBtnEl.href = registerHref;
+        }
+
+        registerExpertBtnEl.addEventListener('click', (event) => {
+            event.preventDefault();
+            window.location.href = registerHref;
+        });
     }
 
     loadPopularExperts();
