@@ -7,6 +7,8 @@ import { BOT } from '/js/shared/app-config.js';
 const popularExpertsListEl = document.getElementById('popular-experts-list');
 const popularExpertsEmptyEl = document.getElementById('popular-experts-empty');
 const registerExpertBtnEl = document.getElementById('register-expert-btn');
+const marketplaceSearchFormEl = document.getElementById('marketplace-search-form');
+const marketplaceSearchInputEl = document.getElementById('marketplace-search-input');
 
 function getTelegramStartParam() {
     const url = new URL(window.location.href);
@@ -22,6 +24,31 @@ function getTelegramStartParam() {
     }
 
     return '';
+}
+
+function bindMarketplaceSearch() {
+    if (!marketplaceSearchFormEl || !marketplaceSearchInputEl) {
+        return;
+    }
+
+    marketplaceSearchFormEl.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        const query = marketplaceSearchInputEl.value.trim();
+
+        if (!query) {
+            marketplaceSearchInputEl.focus();
+            return;
+        }
+
+        // Search is intentionally not connected yet.
+        // Later this can redirect to /search?q=... or call /api/search.
+        marketplaceSearchInputEl.blur();
+    });
+
+    marketplaceSearchFormEl.addEventListener('click', () => {
+        marketplaceSearchInputEl.focus();
+    });
 }
 
 function maybeRedirectFromTelegramStartParam() {
@@ -209,6 +236,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (maybeRedirectFromTelegramStartParam()) {
         return;
     }
+
+    bindMarketplaceSearch();
 
     if (registerExpertBtnEl) {
         const registerHref = buildRegisterHref();

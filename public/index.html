@@ -17,45 +17,61 @@
 </head>
 <body>
 <div class="app">
-    <section class="hero">
+    <section class="hero hero-intro-card home-section-divider">
         <div class="eyebrow">ExpertHub</div>
         <h1>Find the right expert for you</h1>
-        <p>First web3 marketplace for experts, guru, teachers and consultants where bookings, payments and reviews managed by TON smart-contract. <br>
-            Browse by topic, search or register yourself as an expert and create your public page.</p>
+        <p>
+            First web3 marketplace for experts, guru, teachers and consultants where bookings,
+            payments and reviews managed by TON smart-contract.
+            <br><br>
+            Browse by topic, search or register yourself as an expert and create your public page.
+        </p>
     </section>
 
-    <section class="panel search-card">
-        <h2 class="section-title">Search</h2>
-        <p class="section-note">Search UI placeholder for future.</p>
+    <section class="panel search-card search-card-separated">
+        <h2 class="section-title">Search by category or expert name</h2>
+        <p class="section-note">Matthew 7:7-8: "Ask, and it shall be given you; seek, and ye shall find; knock, and it shall be opened unto you: .</p>
 
-        <div class="search-mock" aria-label="Search placeholder">
+        <form id="marketplace-search-form" class="search-mock search-form" role="search">
             <svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"/>
             </svg>
-            <span class="search-text">Search experts, topics, or situations</span>
-        </div>
+
+            <input
+                    id="marketplace-search-input"
+                    class="search-input"
+                    type="search"
+                    inputmode="search"
+                    autocomplete="off"
+                    placeholder="Search experts, topics, or situations"
+                    aria-label="Search experts, topics, or situations"
+            />
+        </form>
     </section>
 
-    <section class="panel categories-card">
+    <section class="panel categories-card categories-card-separated">
         <h2 class="section-title">Browse categories</h2>
         <p class="section-note">Main marketplace directions for the first discovery screen.</p>
 
-        <div class="chips">
-            <a class="chip" href="#">Psychology</a>
-            <a class="chip" href="#">Finance</a>
-            <a class="chip" href="#">Relationships</a>
-            <a class="chip" href="#">Nutrition</a>
-            <a class="chip" href="#">Career</a>
-            <a class="chip" href="#">Fitness</a>
-            <a class="chip" href="#">Legal</a>
-            <a class="chip" href="#">Business</a>
-            <a class="chip" href="#">Parenting</a>
-            <a class="chip" href="#">Productivity</a>
-            <a class="chip" href="#">Software Architecture</a>
+        <div class="chips category-chips">
+            <a class="chip chip-blue" href="#">Psychology</a>
+            <a class="chip chip-green" href="#">Finance</a>
+            <a class="chip chip-rose" href="#">Relationships</a>
+            <a class="chip chip-lime" href="#">Nutrition</a>
+            <a class="chip chip-sky" href="#">Career</a>
+            <a class="chip chip-orange" href="#">Fitness</a>
+            <a class="chip chip-slate" href="#">Legal</a>
+            <a class="chip chip-cyan" href="#">Business</a>
+            <a class="chip chip-yellow" href="#">Parenting</a>
+            <a class="chip chip-indigo" href="#">Productivity</a>
+            <a class="chip chip-violet" href="#">Software Architecture</a>
         </div>
     </section>
 
-    <section class="panel popular-experts-card">
+    <section id="popular-experts" class="panel popular-experts-card">
         <div class="section-head-inline">
             <div>
                 <h2 class="section-title">Popular experts</h2>
