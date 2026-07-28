@@ -135,16 +135,20 @@ impl TelegramBotClient {
 
         let slot_start = format_booking_time(&booking.slot_start);
         let slot_end = format_booking_time(&booking.slot_end);
+        let confirmation_time_left = format_time_left_until(booking.expires_at);
 
         let text = format!(
-            "New booking request:\n\n\
+            "New booking request #{}:\n\n\
              Customer: {customer_username} / {customer_name}\n\
              Date: {}\n\
              Time: {}–{}\n\
              Duration: {} minutes\n\
-             Amount: {} TON\n\n\
+             Amount: {} USD\n\n\
              The customer has funded the escrow contract for this slot.\n\n\
+             Please confirm or decline this booking within {confirmation_time_left}.\n\
+             If you do not answer in time, the booking will be automatically declined and the escrow refund will be triggered.\n\n\
              Do you confirm this booking?",
+             booking.id,
             format_booking_date(&booking.slot_start),
             slot_start,
             slot_end,
@@ -165,6 +169,33 @@ impl TelegramBotClient {
             ]],
         };
 
+        fn format_time_left_until(deadline: chrono::DateTime<chrono::FixedOffset>) -> String {
+            let now = chrono::Utc::now().fixed_offset();
+
+            if deadline <= now {
+                return "less than 1 minute".to_string();
+            }
+
+            let minutes = (deadline - now).num_minutes();
+
+            if minutes >= 60 {
+                let hours = minutes / 60;
+                let rest_minutes = minutes % 60;
+
+                if rest_minutes == 0 {
+                    format!("{hours} hour{}", if hours == 1 { "" } else { "s" })
+                } else {
+                    format!(
+                        "{hours} hour{} {rest_minutes} minute{}",
+                        if hours == 1 { "" } else { "s" },
+                        if rest_minutes == 1 { "" } else { "s" }
+                    )
+                }
+            } else {
+                format!("{minutes} minute{}", if minutes == 1 { "" } else { "s" })
+            }
+        }
+
         self.send_message(expert.telegram_id, text, Some(reply_markup)).await
     }
 
@@ -174,7 +205,11 @@ impl TelegramBotClient {
     ) -> Result<(), String> {
         self.send_message(
             booking.requested_by_telegram_id,
-            "Payment confirmed.\n\nThe expert has been notified and will confirm or decline your booking."
+            format!(
+                "Payment confirmed for booking #{}.\n\n\
+                 The expert has been notified and will confirm or decline your booking.",
+                booking.id
+            )
                 .to_string(),
             None,
         )
@@ -194,12 +229,13 @@ impl TelegramBotClient {
             .unwrap_or_else(|| expert.display_name.clone());
 
         let text = format!(
-            "Your booking is confirmed.\n\n\
+            "Your booking #{} is confirmed.\n\n\
              Expert: {expert_username}\n\
              Date: {}\n\
              Time: {}–{}\n\
              Duration: {} minutes\n\n\
              We’ll notify you before the session starts.",
+             booking.id,
             format_booking_date(&booking.slot_start),
             format_booking_time(&booking.slot_start),
             format_booking_time(&booking.slot_end),
@@ -215,7 +251,10 @@ impl TelegramBotClient {
     ) -> Result<(), String> {
         self.send_message(
             booking.requested_by_telegram_id,
-            "The expert declined this booking.\n\nThe escrow refund has been triggered."
+            format!(
+                "The expert declined your booking #{}.\n\nThe escrow refund has been triggered.",
+                booking.id
+            )
                 .to_string(),
             None,
         )
@@ -259,6 +298,45 @@ impl TelegramBotClient {
         );
 
         self.send_message(customer_telegram_id, text, None).await
+    }
+
+    pub async fn notify_customer_expert_response_timeout_refunded(
+        &self,
+        booking: &bookings::Model,
+    ) -> Result<(), String> {
+        let text = format!(
+                       "The expert did not answer in time.\n\n\
+                        Booking #{}\n\
+                        Your escrow refund has been triggered.",
+                       booking.id
+                   );
+
+        self.send_message(
+            booking.requested_by_telegram_id,
+            text.to_string(),
+            None,
+        )
+        .await
+    }
+
+    pub async fn notify_expert_response_timeout_refunded(
+        &self,
+        expert: &experts::Model,
+        booking: &bookings::Model,
+    ) -> Result<(), String> {
+        let text = format!(
+                       "You did not answer in time.\n\n\
+                        Booking #{}\n\
+                        The escrow refund has been triggered.",
+                       booking.id
+                   );
+
+        self.send_message(
+            expert.telegram_id,
+            text.to_string(),
+            None,
+        )
+        .await
     }
 }
 

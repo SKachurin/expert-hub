@@ -1,4 +1,4 @@
-use actix_web::{post, web, HttpResponse};
+use actix_web::{post, web, HttpRequest, HttpResponse};
 
 use crate::{
     services::{
@@ -14,15 +14,65 @@ use crate::{
 #[post("/telegram/webhook")]
 pub async fn telegram_webhook_handler(
     state: web::Data<AppState>,
+    req: HttpRequest,
     body: web::Json<TelegramUpdate>,
 ) -> HttpResponse {
+//     return HttpResponse::ImATeapot().body("SERGE_TEST");
+
+    let expected_secret = state.config.telegram_webhook_secret_token.trim();
+
+    println!(
+        "EXPECTED='{}'",
+        expected_secret
+    );
+
+    println!(
+        "HEADERS={:#?}",
+        req.headers()
+    );
+
+//     return HttpResponse::Ok().finish();
+
+
+
+    if !expected_secret.is_empty() {
+        println!("WEBHOOK_HEADERS {:?}", req.headers());
+
+        let incoming_secret = req
+            .headers()
+            .get("X-Telegram-Bot-Api-Secret-Token")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        println!(
+            "WEBHOOK_SECRET expected='{}' incoming='{}'",
+            expected_secret,
+            incoming_secret
+        );
+
+        if incoming_secret != expected_secret {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "ok": false,
+                "error": "unauthorized"
+            }));
+        }
+    }
+
     let Some(callback) = &body.callback_query else {
+        println!("BOOKING_WEBHOOK received non-callback update");
         return HttpResponse::Ok().json(serde_json::json!({ "ok": true }));
     };
 
     let Some(data) = callback.data.as_deref() else {
         return HttpResponse::Ok().json(serde_json::json!({ "ok": true }));
     };
+
+    println!(
+        "BOOKING_DECLINE_WEBHOOK callback_id={} from={} data={:?}",
+        callback.id,
+        callback.from.id,
+        callback.data
+    );
 
     let parsed = parse_booking_callback_data(data);
 
@@ -39,6 +89,14 @@ pub async fn telegram_webhook_handler(
 
         return HttpResponse::Ok().json(serde_json::json!({ "ok": true }));
     };
+
+    println!(
+        "BOOKING_CALLBACK decision={:?} booking_id={} payment_id={}",
+        decision,
+        booking_id,
+        payment_id
+    );
+
 
     let result = process_expert_booking_decision(
         &state,

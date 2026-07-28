@@ -30,6 +30,8 @@ let expertAllowedDurations = [];
 let currentPageRequestController = null;
 let currentPageRequestId = 0;
 
+let currentPayment = null;
+
 function bindDom() {
     els = {
         debugStatus: document.getElementById('debug-status'),
@@ -190,7 +192,6 @@ function debugBooking(label, data = null) {
         (data ? `\n${safeJson(data)}` : '');
 
     panel.textContent = `${line}\n\n${panel.textContent || ''}`;
-    console.log(label, data);
 }
 
 function setDebugStatus(text) {
@@ -514,8 +515,6 @@ async function loadPublicPage() {
             return;
         }
 
-        console.error(error);
-
         if (requestId !== currentPageRequestId) {
             return;
         }
@@ -616,8 +615,6 @@ async function loadAvailabilityOnly() {
         if (error.name === 'AbortError') {
             return;
         }
-
-        console.error(error);
 
         if (requestId !== currentPageRequestId) {
             return;
@@ -1046,29 +1043,60 @@ async function confirmBookingPaymentWithRetry(bookingId, txResult) {
     for (let attempt = 1; attempt <= 12; attempt += 1) {
         try {
             setDebugStatus(`Wallet returned. Checking payment… attempt ${attempt}/12`);
+            setPaymentCheckingDetail(`Checking escrow contract funding status… attempt ${attempt}/12`);
 
-            setPaymentCheckingDetail(
-                `Checking escrow contract funding status… attempt ${attempt}/12`
+            const result = await confirmBookingPayment(bookingId, txResult);
+
+            const balance = BigInt(result.balance_nano_ton ?? '0');
+            const expected = BigInt(currentPayment.total_deploy_value_nano_ton);
+            const minimumAccepted = expected * 98n / 100n;
+
+            if (
+                result.verified === true &&
+                result.account_state === 'active' &&
+                balance >= minimumAccepted
+            ) {
+                debugBooking('SUCCESS RESPONSE FROM BACKEND', {
+                        attempt,
+                        response: result,
+                        balance: balance.toString(),
+                        expected: expected.toString(),
+                        minimumAccepted: minimumAccepted.toString()
+                });
+                return result;
+            }
+
+            debugBooking('Payment not verified yet', {
+                attempt,
+                verified: result.verified,
+                account_state: result.account_state,
+                balance: balance.toString(),
+                expected: expected.toString()
+            });
+
+            debugBooking('ABOUT TO THROW', result);
+
+            throw new Error(
+                `Contract state=${result.account_state}, verified=${result.verified}, balance=${balance}, expected=${expected}`
             );
-
-            return await confirmBookingPayment(bookingId, txResult);
         } catch (error) {
             lastError = error;
 
             debugBooking('confirmBookingPaymentWithRetry: attempt failed', {
                 bookingId,
                 attempt,
-                message: error?.message,
-                stack: error?.stack
+                message: error?.message
             });
+        }
 
-            if (attempt < 12) {
-                await sleep(5000);
-            }
+        if (attempt < 12) {
+            await sleep(5000);
         }
     }
 
-    throw lastError || new Error('Payment confirmation failed after retries.');
+    throw lastError || new Error(
+        'Payment could not be verified on the TON blockchain.'
+    );
 }
 
 function normalizePaymentPayload(data) {
@@ -1108,12 +1136,35 @@ function normalizePaymentPayload(data) {
         null;
 
     return {
-        booking_id: data.booking_id || data.bookingId || payload.booking_id || payload.bookingId || null,
-        payment_id: data.payment_id || data.paymentId || payload.payment_id || payload.paymentId || payload.id || null,
+        booking_id:
+            data.booking_id ||
+            data.bookingId ||
+            payload.booking_id ||
+            payload.bookingId ||
+            null,
+
+        payment_id:
+            data.payment_id ||
+            data.paymentId ||
+            payload.payment_id ||
+            payload.paymentId ||
+            payload.id ||
+            null,
+
         contract_address: contractAddress,
         destination_address: contractAddress,
+
         amount_nano_ton: amountNanoTon,
+
+        total_deploy_value_nano_ton:
+            payload.total_deploy_value_nano_ton ??
+            payload.totalDeployValueNanoTon ??
+            data.total_deploy_value_nano_ton ??
+            data.totalDeployValueNanoTon ??
+            amountNanoTon,
+
         state_init_boc: stateInitBoc,
+
         raw: data
     };
 }
@@ -1205,20 +1256,50 @@ async function showReturnedFromWalletAndConfirmPayment(bookingId, txResult) {
         hasBoc: !!txResult?.boc
     });
 
-    const confirmed = await confirmBookingPaymentWithRetry(bookingId, txResult);
+    try {
+        const confirmed = await confirmBookingPaymentWithRetry(bookingId, txResult);
 
-    debugBooking('payment confirmed by backend', confirmed);
+        debugBooking('ABOUT TO OPEN SUCCESS MODAL', confirmed);
 
-    closeModal(els.paymentCheckingModal);
+        closeModal(els.paymentCheckingModal);
 
-    selectedSlot = null;
-    updateBookingUi();
+        selectedSlot = null;
+        updateBookingUi();
 
-    setDebugStatus('Payment confirmed. Waiting for expert confirmation.');
+        setDebugStatus('Payment confirmed. Waiting for expert confirmation.');
 
-    openModal(els.paymentConfirmedModal);
+        debugBooking('OPENING PAYMENT CONFIRMED MODAL');
 
-    return confirmed;
+        openModal(els.paymentConfirmedModal);
+
+        return confirmed;
+
+    } catch (error) {
+
+        debugBooking('payment verification FAILED', {
+            bookingId,
+            message: error?.message,
+            stack: error?.stack
+        });
+
+        setDebugStatus(
+            'Payment could not be verified on the blockchain.'
+        );
+
+        setPaymentCheckingDetail(
+            'The wallet returned, but the escrow contract never became active.\n\n' +
+            'Please verify the transaction in your wallet. ' +
+            'If no transaction exists, the payment was not sent.'
+        );
+
+        showPaymentCheckingCloseButton();
+
+        // IMPORTANT:
+        // DO NOT close this modal.
+        // DO NOT open the success modal.
+        // DO NOT clear selectedSlot.
+        throw error;
+    }
 }
 
 function bindEvents() {
@@ -1264,7 +1345,6 @@ function bindEvents() {
                 stack: error?.stack
             });
 
-            console.error(error);
             setDebugStatus(error.message || 'Booking flow failed.');
         }
     });
@@ -1312,12 +1392,21 @@ function bindEvents() {
 
             const startedRaw = await beginBookingPayment(requested.id);
             const started = normalizePaymentPayload(startedRaw);
+            currentPayment = started;
 
-            debugBooking('payment payload normalized', {
-                ...started,
-                state_init_boc: started?.state_init_boc
-                    ? `[stateInit length ${String(started.state_init_boc).length}]`
-                    : null
+            debugBooking('payment payload', {
+
+                booking_id: started.booking_id,
+
+                payment_id: started.payment_id,
+
+                contract: started.contract_address,
+
+                amount: started.amount_nano_ton,
+
+                deploy: started.total_deploy_value_nano_ton,
+
+                hasStateInit: !!started.state_init_boc
             });
 
             if (!started?.contract_address && !started?.destination_address) {
@@ -1340,14 +1429,21 @@ function bindEvents() {
                 throw new Error('Wallet returned without transaction result.');
             }
 
-            await showReturnedFromWalletAndConfirmPayment(requested.id, txResult);
+            try {
+                await showReturnedFromWalletAndConfirmPayment(requested.id, txResult);
+            } catch (error) {
+
+                debugBooking('booking flow aborted', {
+                    message: error?.message
+                });
+
+                return;
+            }
         } catch (error) {
             debugBooking('booking/payment flow ERROR', {
                 message: error?.message,
                 stack: error?.stack
             });
-
-            console.error(error);
 
             setDebugStatus(error.message || 'Booking failed.');
 

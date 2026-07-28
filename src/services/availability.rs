@@ -5,11 +5,12 @@ use chrono::{
 use chrono_tz::Tz;
 use serde::Serialize;
 use serde_json::Value;
-use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, Condition, ConnectionTrait, EntityTrait, QueryFilter};
 use std::collections::{BTreeMap, HashSet};
 
 use reqwest::StatusCode;
 use crate::services::bookings::ACTIVE_BOOKING_BLOCKER_STATUSES;
+use crate::services::booking_rules::PLATFORM_MIN_BOOKING_LEAD_MINUTES;
 
 use crate::{
     config::AppConfig,
@@ -120,7 +121,10 @@ where
     }
 
     let latest_allowed_date = today_local + Duration::days(expert.max_days_ahead as i64);
-    let earliest_allowed_start = now_utc + Duration::minutes(expert.minimum_notice_minutes as i64);
+
+    let effective_min_notice_minutes = (expert.minimum_notice_minutes as i64).max(PLATFORM_MIN_BOOKING_LEAD_MINUTES);
+
+    let earliest_allowed_start = now_utc + Duration::minutes(effective_min_notice_minutes);
 
     let mut blocked = load_google_busy_intervals(
         db,
@@ -320,9 +324,15 @@ where
         .filter(bookings::Column::ExpertId.eq(expert_id))
         .filter(bookings::Column::SlotStart.lt(period_end_utc.fixed_offset()))
         .filter(bookings::Column::SlotEnd.gt(period_start_utc.fixed_offset()))
-        .filter(bookings::Column::Status.is_in(
-            ACTIVE_BOOKING_BLOCKER_STATUSES.iter().copied()
-        ))
+        .filter(
+            Condition::any()
+                .add(
+                    bookings::Column::Status.is_in(
+                        ACTIVE_BOOKING_BLOCKER_STATUSES.iter().copied()
+                    )
+                )
+                .add(bookings::Column::ExpertRejectedAt.is_not_null())
+        )
         .all(db)
         .await
         .map_err(|e| format!("failed to load bookings: {e}"))?;

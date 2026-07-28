@@ -55,6 +55,7 @@ jobs:
           
             export TON_WORKER_BASE_URL="${{ secrets.TON_WORKER_BASE_URL }}";
             export TON_WORKER_AUTH_TOKEN="${{ secrets.TON_WORKER_AUTH_TOKEN }}";
+            export TELEGRAM_WEBHOOK_SECRET_TOKEN="${{ secrets.TELEGRAM_WEBHOOK_SECRET_TOKEN }}";
 
             chmod +x /opt/deploy.sh;
             bash /opt/deploy.sh;

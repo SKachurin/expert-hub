@@ -16,6 +16,11 @@ use crate::services::ton::{
     },
 };
 
+use crate::services::booking_rules::{
+    calculate_expert_confirmation_deadline,
+    calculate_session_outcome_deadline,
+};
+
 pub struct TonController {
     pub client: TonWorkerClient,
 }
@@ -57,16 +62,13 @@ impl TonController {
 
             let slot_start_unix = booking.slot_start.timestamp();
 
-            let expert_confirmation_deadline_unix = Utc::now()
-                .checked_add_signed(Duration::minutes(15))
-                .ok_or_else(|| "failed to calculate expert confirmation deadline".to_string())?
-                .timestamp();
+            let expert_confirmation_deadline_unix =
+                calculate_expert_confirmation_deadline(booking.slot_start)?
+                    .timestamp();
 
-            let session_outcome_deadline_unix = booking
-                .slot_end
-                .checked_add_signed(Duration::minutes(10))
-                .ok_or_else(|| "failed to calculate session outcome deadline".to_string())?
-                .timestamp();
+            let session_outcome_deadline_unix =
+                calculate_session_outcome_deadline(booking.slot_end)?
+                    .timestamp();
 
            Ok(CreateBookingContractRequest {
                booking_id: booking.id,
@@ -116,17 +118,35 @@ impl TonController {
         booking_id: i64,
         reason: Option<String>,
     ) -> Result<ContractActionResponse, String> {
-        self.client
+
+        println!(
+            "TON_CONTROLLER_DECLINE contract={} booking={} payment={} reason={:?}",
+            contract_address,
+            booking_id,
+            payment_id,
+            reason
+        );
+
+        let request = ContractActionRequest {
+            payment_id,
+            booking_id,
+            action: "expert_decline".to_string(),
+            reason,
+        };
+
+        let result = self.client
             .send_contract_action(
                 &contract_address,
-                &ContractActionRequest {
-                    payment_id,
-                    booking_id,
-                    action: "expert_decline".to_string(),
-                    reason,
-                },
+                &request,
             )
-            .await
+            .await;
+
+        println!(
+            "TON_CONTROLLER_DECLINE_RESULT {:?}",
+            result
+        );
+
+        result
     }
 
     pub async fn settle_customer_no_show(

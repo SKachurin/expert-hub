@@ -28,6 +28,15 @@ async fn main() -> std::io::Result<()> {
 
     let state = web::Data::new(AppState::new(config.clone(), db));
 
+    let expiry_worker_state = state.clone();
+
+    tokio::spawn(async move {
+        crate::services::booking_expiry_worker::run_booking_expiry_worker(
+            expiry_worker_state,
+        )
+        .await;
+    });
+
     HttpServer::new(move || {
         App::new()
             .wrap(NormalizePath::trim())

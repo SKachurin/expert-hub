@@ -60,7 +60,18 @@ impl TonWorkerClient {
         contract_address: &str,
         payload: &ContractActionRequest,
     ) -> Result<ContractActionResponse, String> {
+
+        println!(
+            "TON_WORKER_ACTION_REQUEST {}",
+            serde_json::to_string_pretty(payload).unwrap_or_default()
+        );
+
         let url = format!("{}/contracts/{}/action", self.base_url, contract_address);
+
+        println!(
+            "TON_WORKER_ACTION_URL {}",
+            url
+        );
 
         let response = self.http
             .post(url)
@@ -72,15 +83,31 @@ impl TonWorkerClient {
 
         let status = response.status();
 
+        println!(
+            "TON_WORKER_ACTION_HTTP_STATUS {}",
+            status
+        );
+
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
             return Err(format!("ton worker action failed with {status}: {text}"));
         }
-
-        response
+//
+//         response
+//             .json::<ContractActionResponse>()
+//             .await
+//             .map_err(|e| format!("invalid ton worker action response: {e}"))
+        let result = response
             .json::<ContractActionResponse>()
             .await
-            .map_err(|e| format!("invalid ton worker action response: {e}"))
+            .map_err(|e| format!("invalid ton worker action response: {e}"))?;
+
+        println!(
+            "TON_WORKER_ACTION_RESPONSE {}",
+            serde_json::to_string_pretty(&result).unwrap_or_default()
+        );
+
+        Ok(result)
     }
 
     pub async fn get_booking_contract_state(

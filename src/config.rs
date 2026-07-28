@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub google_redirect_uri: String,
     pub ton_worker_base_url: String,
     pub ton_worker_auth_token: String,
+    pub telegram_webhook_secret_token: String,
 }
 
 impl AppConfig {
@@ -76,6 +77,11 @@ impl AppConfig {
             .trim()
             .to_string();
 
+        let telegram_webhook_secret_token = env::var("TELEGRAM_WEBHOOK_SECRET_TOKEN")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
         Self {
             host,
             port,
@@ -88,6 +94,7 @@ impl AppConfig {
             google_redirect_uri,
             ton_worker_base_url,
             ton_worker_auth_token,
+            telegram_webhook_secret_token,
         }
     }
 }

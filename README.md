@@ -74,6 +74,13 @@ At this stage the project already has:
 - backend payment confirmation endpoint checks escrow contract state through TON Worker
 - successful escrow funding moves payment and booking to `funded`
 - backend sends Telegram Bot messages after successful funding verification
+- expert confirmation deadline calculation implemented
+- automatic booking timeout worker checks expired confirmations
+- expired bookings automatically trigger `expert_decline` through TON Worker
+- automatic refund flow updates booking/payment state
+- Telegram Bot notifies both customer and expert when confirmation expires
+- late Confirm/Decline button presses are safely rejected
+- extensive timeout and payment lifecycle logging added
 - frontend shows a wallet-return checking modal while backend verifies the escrow
 - frontend shows a final payment-confirmed modal after backend verification succeeds
 
@@ -454,8 +461,62 @@ Meaning:
 * `review_open` — customer can leave review
 * `closed` — review submitted or review window expired
 
----
 
+### Expert confirmation deadline rules
+
+After the customer funds the escrow contract, the expert must confirm or decline the booking before the expert confirmation deadline.
+
+Public availability rules:
+
+```text
+1. Public availability never shows slots closer than 4 hours.
+
+2. Booking creation also rejects slots closer than 4 hours.
+
+3. If the slot starts 24h+ from now:
+   expert must answer within 24h.
+
+4. If the slot starts between 4h and 24h from now:
+   expert must answer within 4h.
+
+5. Expert confirmation deadline is always capped at slot_start - 30 minutes.
+```
+
+Timeout behavior:
+
+```text
+If expert does not answer before deadline:
+    backend calls TON Worker action expert_decline
+    booking.status = refunded
+    payment.status = refunded
+    booking.expert_rejected_at = now
+    rejected_reason = expert_response_timeout
+
+Customer Telegram message:
+    “The expert did not answer in time. Your escrow refund has been triggered.”
+
+Expert Telegram message:
+    “You did not answer in time. The escrow refund has been triggered.”
+```
+
+Late button behavior:
+
+```text
+If expert clicks Confirm or Decline after timeout:
+    backend does not process the original action again
+    Telegram callback alert says:
+    “Too late. This request has already been refunded.”
+```
+
+Session outcome deadline:
+
+```text
+session_outcome_deadline_unix = slot_end + 10 minutes
+```
+
+This is separate from expert confirmation. It is used later for final session outcome settlement after the scheduled call window.
+
+---
 ## Telegram auth and navigation logic
 
 The project supports two frontend contexts.
@@ -950,6 +1011,63 @@ booking.expert_rejected_at = now
 booking.rejected_reason = expert_declined
 customer is notified: expert declined, escrow refund triggered
 
+## Expert confirmation deadline rules
+
+After the customer funds the escrow contract, the expert must confirm or decline the booking before the expert confirmation deadline.
+
+Public availability rules:
+
+```text
+1. Public availability never shows slots closer than 4 hours.
+
+2. Booking creation also rejects slots closer than 4 hours.
+
+3. If the slot starts 24h+ from now:
+   expert must answer within 24h.
+
+4. If the slot starts between 4h and 24h from now:
+   expert must answer within 4h.
+
+5. Expert confirmation deadline is always capped at slot_start - 30 minutes.
+```
+
+Timeout behavior:
+
+```text
+If expert does not answer before deadline:
+    backend calls TON Worker action expert_decline
+    booking.status = refunded
+    payment.status = refunded
+    booking.expert_rejected_at = now
+    rejected_reason = expert_response_timeout
+
+Customer Telegram message:
+    "The expert did not answer in time. Your escrow refund has been triggered."
+
+Expert Telegram message:
+    "You did not answer in time. The escrow refund has been triggered."
+```
+
+Late button behavior:
+
+```text
+If expert clicks Confirm or Decline after timeout:
+    backend does not process the original action again
+
+Telegram callback alert:
+    "Too late. This request has already been refunded."
+```
+
+Session outcome deadline:
+
+```text
+session_outcome_deadline_unix = slot_end + 10 minutes
+```
+
+This deadline is independent from expert confirmation.
+It will later be used for session settlement after the scheduled consultation window.
+
+
 Status path:
 
 requested
@@ -1001,6 +1119,13 @@ The project can currently demonstrate:
 23. backend sends Telegram Bot messages
 24. frontend shows payment-confirmed modal
 25. customer can close the Telegram Mini App
+26. expert receives Telegram Confirm / Decline buttons
+27. backend calculates expert confirmation deadline
+28. background worker monitors expired confirmations
+29. expired bookings automatically trigger expert_decline
+30. booking/payment become refunded
+31. both users receive timeout notifications
+32. late Telegram callbacks are rejected safely
 
 ## Telegram research / session detection direction
 
@@ -1354,19 +1479,18 @@ docker logs -f ton-worker-experthub
 
 Next priorities:
 
-1. Finish and harden Telegram Bot webhook deployment for expert Confirm/Decline buttons.
+1. Complete the expert confirmation flow (booking status transition, customer notification, calendar integration if required).
 2. Verify expert callback sender identity.
 3. Verify `expert_confirm` action end-to-end against a funded escrow contract.
 4. Verify `expert_decline` action end-to-end against a funded escrow contract.
-5. Move confirmed bookings from `funded` to `waiting_for_session`.
-6. Notify customer when expert confirms or declines.
-7. Add Telegram watcher / research service.
-8. Store watcher events in `telegram_call_events`.
-9. Apply final session outcomes.
-10. Wire `session_connected`, `customer_no_show`, and `expert_no_show` contract actions.
-11. Add review flow.
-12. Refactor `expert-public.js` into smaller modules without changing working behavior.
-13. Add marketplace discovery later.
+5. Verify automatic timeout refund flow against the TON testnet.
+6. Add Telegram watcher / research service.
+7. Store watcher events in `telegram_call_events`.
+8. Apply final session outcomes.
+9. Wire `session_connected`, `customer_no_show`, and `expert_no_show` contract actions.
+10. Add review flow.
+11. Refactor `expert-public.js` into smaller modules without changing working behavior.
+12. Add marketplace discovery later.
 
 ---
 
@@ -1388,6 +1512,27 @@ Recent booking/payment work completed:
 * removed frontend recovery-style payment confirmation logic
 * added payment-checking modal and payment-confirmed modal
 * confirmed the direct wallet-return → backend-check → confirmed-modal flow works
+
+Recent booking confirmation work completed:
+
+* implemented expert confirmation deadline calculation
+* implemented automatic booking timeout worker
+* implemented automatic `expert_decline` execution through TON Worker
+* implemented automatic refund state transition
+* added `expert_response_timeout` rejection reason
+* implemented timeout notifications for both customer and expert
+* implemented protection against late Confirm/Decline callbacks
+* added extensive logging for booking deadlines
+* added extensive logging for timeout processing
+* added extensive logging for TON payment and contract actions
+
+Current limitation:
+
+```text
+Full end-to-end verification against the TON testnet is temporarily blocked because the public TON testnet has stopped processing ordinary user transactions.
+
+The booking timeout, refund and confirmation logic has been implemented, but final end-to-end validation against a live escrow contract is pending until the public testnet resumes normal operation.
+```
 
 Important debugging lesson:
 
