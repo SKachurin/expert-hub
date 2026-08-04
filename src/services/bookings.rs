@@ -1,12 +1,15 @@
 use actix_web::web;
-use chrono::{DateTime, Duration, FixedOffset, TimeZone, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, TransactionTrait, QueryFilter, Set,
 };
+use sea_orm::sea_query::Expr;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::time::{sleep, Duration as TokioDuration};
+use crate::services::ton::payment_metadata::TonPaymentMetadata;
 
 use crate::{
     entities::{bookings, experts, payments},
@@ -31,6 +34,7 @@ use crate::{
 pub const BOOKING_STATUS_REQUESTED: &str = "requested";
 pub const BOOKING_STATUS_AWAITING_PAYMENT: &str = "awaiting_payment";
 pub const BOOKING_STATUS_FUNDED: &str = "funded";
+pub const BOOKING_STATUS_PROCESSING: &str = "processing";
 pub const BOOKING_STATUS_WAITING_FOR_SESSION: &str = "waiting_for_session";
 pub const BOOKING_STATUS_IN_GRACE_PERIOD: &str = "in_grace_period";
 pub const BOOKING_STATUS_COMPLETED: &str = "completed";
@@ -50,9 +54,15 @@ pub const ACTIVE_BOOKING_BLOCKER_STATUSES: &[&str] = &[
     BOOKING_STATUS_REQUESTED,
     BOOKING_STATUS_AWAITING_PAYMENT,
     BOOKING_STATUS_FUNDED,
+    BOOKING_STATUS_PROCESSING,
     BOOKING_STATUS_WAITING_FOR_SESSION,
     BOOKING_STATUS_IN_GRACE_PERIOD,
 ];
+
+const STATE_WAITING_SESSION: i32 = 2;
+const STATE_REFUNDED_TO_CUSTOMER: i32 = 4;
+
+const BALANCE_TOLERANCE_BPS: u128 = 30; // 30 basis points = 0.3%
 
 #[derive(Debug, Deserialize)]
 pub struct CreateBookingRequest {
@@ -104,6 +114,8 @@ pub struct BeginPaymentResponse {
     pub destination_address: String,
     pub state_init_boc: String,
     pub amount_nano_ton: String,
+    pub customer_total_ton: String,
+    pub customer_total_nano_ton: String,
     pub recommended_gas_buffer_nano_ton: String,
     pub total_deploy_value_nano_ton: String,
     pub payment_status: String,
@@ -180,6 +192,41 @@ pub async fn process_expert_booking_decision(
         ));
     }
 
+    if !claim_processing(&state.db, booking.id).await? {
+        let current = bookings::Entity::find_by_id(booking.id)
+            .one(&state.db)
+            .await
+            .map_err(|e| format!("failed to reload booking: {e}"))?
+            .ok_or_else(|| "booking not found".to_string())?;
+
+        match current.status.as_str() {
+            BOOKING_STATUS_WAITING_FOR_SESSION => {
+                return summarize_booking(&state.db, current.id).await;
+            }
+
+            BOOKING_STATUS_REFUNDED => {
+                return Err("Too late. This request has already been refunded.".to_string());
+            }
+
+            BOOKING_STATUS_PROCESSING => {
+                return Err("Booking is already being processed.".to_string());
+            }
+
+            _ => {
+                return Err(format!(
+                    "booking already moved to {}",
+                    current.status
+                ));
+            }
+        }
+    }
+
+    let booking = bookings::Entity::find_by_id(booking.id)
+        .one(&state.db)
+        .await
+        .map_err(|e| format!("failed to reload booking: {e}"))?
+        .ok_or_else(|| "booking not found".to_string())?;
+
     let payment = payments::Entity::find()
         .filter(payments::Column::Id.eq(payment_id))
         .filter(payments::Column::BookingId.eq(booking.id))
@@ -214,75 +261,156 @@ pub async fn process_expert_booking_decision(
     );
     let ton_controller = TonController::new(ton_client);
 
-    match decision {
-        ExpertBookingDecision::Confirm => {
-            ton_controller
-                .confirm_expert(contract_address.clone(), payment.id, booking.id)
-                .await?;
-
-            let now = Utc::now().fixed_offset();
-
-            let mut active: bookings::ActiveModel = booking.clone().into();
-            active.status = Set(BOOKING_STATUS_WAITING_FOR_SESSION.to_string());
-            active.expert_confirmed_at = Set(Some(now));
-            active.updated_at = Set(now);
-
-            let updated = active
-                .update(&state.db)
-                .await
-                .map_err(|e| format!("failed to update booking after expert confirm: {e}"))?;
-
-            let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
-            if let Err(err) = bot.notify_customer_expert_confirmed(&expert, &updated).await {
-                eprintln!(
-                    "[telegram] failed to notify customer about expert confirmation: {err}"
-                );
-            }
-
-            summarize_booking(&state.db, updated.id).await
-        }
-
-        ExpertBookingDecision::Decline => {
-            ton_controller
-                .decline_expert(
-                    contract_address.clone(),
-                    payment.id,
-                    booking.id,
-                    Some("expert declined booking".to_string()),
+     match decision {
+            ExpertBookingDecision::Confirm => {
+                // Target on-chain state after successful expert_confirm
+                if contract_already_in_state(
+                    &ton_controller,
+                    &contract_address,
+                    STATE_WAITING_SESSION,
                 )
-                .await?;
+                .await?
+                {
+                    tracing::info!(
+                        booking_id = booking.id,
+                        "expert_confirm already applied on-chain; treating as success"
+                    );
+                } else {
+                    match ton_controller
+                        .confirm_expert(contract_address.clone(), payment.id, booking.id)
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) => {
+                            // Message may have landed even if HTTP timed out
+                            if contract_already_in_state(
+                                &ton_controller,
+                                &contract_address,
+                                STATE_WAITING_SESSION,
+                            )
+                            .await?
+                            {
+                                tracing::warn!(
+                                    booking_id = booking.id,
+                                    error = %e,
+                                    "expert_confirm HTTP failed but on-chain state is already waiting_for_session; treating as success"
+                                );
+                            } else {
+                                rollback_processing_to_funded(&state.db, booking.id).await?;
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
 
-            let now = Utc::now().fixed_offset();
+                let now = Utc::now().fixed_offset();
 
-            let mut active_booking: bookings::ActiveModel = booking.clone().into();
-            active_booking.status = Set(BOOKING_STATUS_REFUNDED.to_string());
-            active_booking.expert_rejected_at = Set(Some(now));
-            active_booking.rejected_reason =
-                Set(Some(REJECTED_REASON_EXPERT_DECLINED.to_string()));
-            active_booking.updated_at = Set(now);
+                let mut active: bookings::ActiveModel = booking.clone().into();
+                active.status = Set(BOOKING_STATUS_WAITING_FOR_SESSION.to_string());
+                active.expert_confirmed_at = Set(Some(now));
+                active.updated_at = Set(now);
 
-            let updated_booking = active_booking
-                .update(&state.db)
-                .await
-                .map_err(|e| format!("failed to mark booking as refunded: {e}"))?;
+                let updated = active
+                    .update(&state.db)
+                    .await
+                    .map_err(|e| format!("failed to update booking after expert confirm: {e}"))?;
 
-            let mut active_payment: payments::ActiveModel = payment.clone().into();
-            active_payment.status = Set(PAYMENT_STATUS_REFUNDED.to_string());
-            active_payment.updated_at = Set(now);
+                let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
+                if let Err(err) = bot.notify_customer_expert_confirmed(&expert, &updated).await {
+                    eprintln!(
+                        "[telegram] failed to notify customer about expert confirmation: {err}"
+                    );
+                }
 
-            active_payment
-                .update(&state.db)
-                .await
-                .map_err(|e| format!("failed to mark payment as refunded: {e}"))?;
-
-            let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
-            if let Err(err) = bot.notify_customer_expert_declined(&updated_booking).await {
-                eprintln!("[telegram] failed to notify customer about expert decline: {err}");
+                summarize_booking(&state.db, updated.id).await
             }
 
-            summarize_booking(&state.db, updated_booking.id).await
-        }
-    }
+            ExpertBookingDecision::Decline => {
+                // Target on-chain state after successful expert_decline / refund
+                if contract_already_in_state(
+                    &ton_controller,
+                    &contract_address,
+                    STATE_REFUNDED_TO_CUSTOMER,
+                )
+                .await?
+                {
+                    tracing::info!(
+                        booking_id = booking.id,
+                        "expert_decline already applied on-chain; treating as success"
+                    );
+                } else {
+                    match ton_controller
+                        .decline_expert(
+                            contract_address.clone(),
+                            payment.id,
+                            booking.id,
+                            Some("expert declined booking".to_string()),
+                        )
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) => {
+                            if contract_already_in_state(
+                                &ton_controller,
+                                &contract_address,
+                                STATE_REFUNDED_TO_CUSTOMER,
+                            )
+                            .await?
+                            {
+                                tracing::warn!(
+                                    booking_id = booking.id,
+                                    error = %e,
+                                    "expert_decline HTTP failed but on-chain state is already refunded; treating as success"
+                                );
+                            } else {
+                                rollback_processing_to_funded(&state.db, booking.id).await?;
+                                return Err(e);
+                            }
+                        }
+                    }
+                }
+
+                let now = Utc::now().fixed_offset();
+
+                let mut active_booking: bookings::ActiveModel = booking.clone().into();
+                active_booking.status = Set(BOOKING_STATUS_REFUNDED.to_string());
+                active_booking.expert_rejected_at = Set(Some(now));
+                active_booking.rejected_reason =
+                    Set(Some(REJECTED_REASON_EXPERT_DECLINED.to_string()));
+                active_booking.updated_at = Set(now);
+
+                let txn = state
+                    .db
+                    .begin()
+                    .await
+                    .map_err(|e| format!("failed to begin transaction: {e}"))?;
+
+                let updated_booking = active_booking
+                    .update(&txn)
+                    .await
+                    .map_err(|e| format!("failed to mark booking as refunded: {e}"))?;
+
+                let mut active_payment: payments::ActiveModel = payment.clone().into();
+                active_payment.status = Set(PAYMENT_STATUS_REFUNDED.to_string());
+                active_payment.updated_at = Set(now);
+
+                active_payment
+                    .update(&txn)
+                    .await
+                    .map_err(|e| format!("failed to mark payment as refunded: {e}"))?;
+
+                txn.commit()
+                    .await
+                    .map_err(|e| format!("failed to commit transaction: {e}"))?;
+
+                let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
+                if let Err(err) = bot.notify_customer_expert_declined(&updated_booking).await {
+                    eprintln!("[telegram] failed to notify customer about expert decline: {err}");
+                }
+
+                summarize_booking(&state.db, updated_booking.id).await
+            }
+     }
 }
 
 pub async fn expire_unanswered_funded_booking(
@@ -295,6 +423,13 @@ pub async fn expire_unanswered_funded_booking(
     }
 
     if payment.status != PAYMENT_STATUS_FUNDED {
+        return Ok(());
+    }
+
+    // Atomically claim this booking.
+    // If another process (expert confirm/decline) already claimed it,
+    // there is nothing left for the timeout worker to do.
+    if !claim_processing(&state.db, booking.id).await? {
         return Ok(());
     }
 
@@ -312,14 +447,49 @@ pub async fn expire_unanswered_funded_booking(
 
     let ton_controller = TonController::new(ton_client);
 
-    ton_controller
-        .decline_expert(
-            contract_address,
-            payment.id,
-            booking.id,
-            Some("expert response timeout".to_string()),
-        )
-        .await?;
+    if contract_already_in_state(
+        &ton_controller,
+        &contract_address,
+        STATE_REFUNDED_TO_CUSTOMER,
+    )
+    .await?
+    {
+        tracing::info!(
+            booking_id = booking.id,
+            "timeout refund already applied on-chain"
+        );
+    } else {
+        match ton_controller
+            .decline_expert(
+                contract_address.clone(),
+                payment.id,
+                booking.id,
+                Some("expert response timeout".to_string()),
+            )
+            .await
+        {
+            Ok(_) => {}
+
+            Err(e) => {
+                if contract_already_in_state(
+                    &ton_controller,
+                    &contract_address,
+                    STATE_REFUNDED_TO_CUSTOMER,
+                )
+                .await?
+                {
+                    tracing::warn!(
+                        booking_id = booking.id,
+                        error = %e,
+                        "timeout refund HTTP failed but contract is already refunded"
+                    );
+                } else {
+                    rollback_processing_to_funded(&state.db, booking.id).await?;
+                    return Err(e);
+                }
+            }
+        }
+    }
 
     let now = Utc::now().fixed_offset();
 
@@ -330,8 +500,14 @@ pub async fn expire_unanswered_funded_booking(
         Set(Some(REJECTED_REASON_EXPERT_RESPONSE_TIMEOUT.to_string()));
     active_booking.updated_at = Set(now);
 
+    let txn = state
+        .db
+        .begin()
+        .await
+        .map_err(|e| format!("failed to begin transaction: {e}"))?;
+
     let updated_booking = active_booking
-        .update(&state.db)
+        .update(&txn)
         .await
         .map_err(|e| format!("failed to mark booking as timeout/refunded: {e}"))?;
 
@@ -340,9 +516,13 @@ pub async fn expire_unanswered_funded_booking(
     active_payment.updated_at = Set(now);
 
     active_payment
-        .update(&state.db)
+        .update(&txn)
         .await
         .map_err(|e| format!("failed to mark payment as timeout/refunded: {e}"))?;
+
+    txn.commit()
+        .await
+        .map_err(|e| format!("failed to commit transaction: {e}"))?;
 
     let Some(expert) = experts::Entity::find_by_id(updated_booking.expert_id)
         .one(&state.db)
@@ -609,43 +789,6 @@ fn parse_nano_ton(value: &str, field: &str) -> Result<u128, String> {
         .map_err(|e| format!("failed to parse {field} as nanoTON: {e}"))
 }
 
-fn expected_escrow_amount_nano_ton_from_booking(
-    booking: &bookings::Model,
-) -> Result<u128, String> {
-    let value = booking
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("ton_payment"))
-        .and_then(|ton_payment| ton_payment.get("escrow_amount_nano_ton"))
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| {
-            "booking metadata is missing ton_payment.escrow_amount_nano_ton".to_string()
-        })?;
-
-    parse_nano_ton(value, "expected escrow amount")
-}
-
-fn read_expert_confirmation_deadline_from_metadata(
-    booking: &bookings::Model,
-) -> Result<DateTime<FixedOffset>, String> {
-    let unix = booking
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("ton_payment"))
-        .and_then(|ton_payment| ton_payment.get("expert_confirmation_deadline_unix"))
-        .and_then(|value| value.as_i64())
-        .ok_or_else(|| {
-            "booking metadata is missing ton_payment.expert_confirmation_deadline_unix"
-                .to_string()
-        })?;
-
-    let utc = Utc
-        .timestamp_opt(unix, 0)
-        .single()
-        .ok_or_else(|| "invalid expert confirmation deadline timestamp".to_string())?;
-
-    Ok(utc.fixed_offset())
-}
 
 async fn summarize_booking(
     db: &DatabaseConnection,
@@ -770,6 +913,53 @@ pub async fn begin_booking_payment(
         .map_err(|e| format!("failed to query payment: {e}"))?;
 
     let saved_payment = if let Some(payment) = existing_payment {
+        if let Some(contract_address) = payment.contract_address.clone() {
+            if !contract_address.trim().is_empty() {
+                let metadata = saved_booking
+                    .metadata
+                    .clone()
+                    .unwrap_or_else(|| json!({}));
+
+                let ton = metadata
+                    .get("ton_payment")
+                    .unwrap_or(&serde_json::Value::Null);
+
+                return Ok(BeginPaymentResponse {
+                    booking_id: saved_booking.id,
+                    payment_id: payment.id,
+                    contract_address: contract_address.clone(),
+                    destination_address: contract_address,
+                    state_init_boc: ton
+                        .get("state_init_boc")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    amount_nano_ton: ton
+                        .get("wallet_send_amount_nano_ton")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    customer_total_ton: "".to_string(),
+                    customer_total_nano_ton: ton
+                        .get("customer_total_nano_ton")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    recommended_gas_buffer_nano_ton: ton
+                        .get("recommended_gas_buffer_nano_ton")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    total_deploy_value_nano_ton: ton
+                        .get("total_deploy_value_nano_ton")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    payment_status: payment.status.clone(),
+                });
+            }
+        }
+
         let mut payment_model: payments::ActiveModel = payment.into();
 
         payment_model.status = Set(PAYMENT_STATUS_AWAITING_PAYMENT.to_string());
@@ -814,26 +1004,68 @@ pub async fn begin_booking_payment(
         ));
     };
 
-    let escrow_amount_ton = escrow_amount_ton.round_dp(9);
+    let expert_amount_ton = escrow_amount_ton.round_dp(9);
 
-    if escrow_amount_ton <= Decimal::ZERO {
-        return Err("calculated escrow amount in TON must be positive".to_string());
+    if expert_amount_ton <= Decimal::ZERO {
+        return Err("calculated expert amount in TON must be positive".to_string());
     }
 
-    let escrow_amount_ton_string = escrow_amount_ton.normalize().to_string();
+    let platform_fee_ton = (expert_amount_ton * state.config.platform_fee_percent
+        / Decimal::from(100))
+        .round_dp(9);
+    let gas_reserve_ton = state.config.ton_gas_reserve.round_dp(9);
+    let controller_reserve_ton = state.config.ton_controller_action_reserve.round_dp(9);
 
-    let ton_client = TonWorkerClient::new(
-        state.config.ton_worker_base_url.clone(),
-        state.config.ton_worker_auth_token.clone(),
-    );
+    let customer_total_ton =
+        (expert_amount_ton + platform_fee_ton + gas_reserve_ton + controller_reserve_ton)
+            .round_dp(9);
 
-    let ton_controller = TonController::new(ton_client);
+    if customer_total_ton <= Decimal::ZERO {
+        return Err("calculated customer total in TON must be positive".to_string());
+    }
+
+
+    let expert_amount_nano: u128 = parse_nano_ton(
+        &ton_decimal_string_to_nano_ton(&expert_amount_ton.normalize().to_string())?,
+        "expert_amount_nano_ton",
+    )?;
+
+    let platform_fee_nano: u128 = parse_nano_ton(
+        &ton_decimal_string_to_nano_ton(&platform_fee_ton.normalize().to_string())?,
+        "platform_fee_nano_ton",
+    )?;
+
+    let gas_reserve_nano: u128 = parse_nano_ton(
+        &ton_decimal_string_to_nano_ton(&gas_reserve_ton.normalize().to_string())?,
+        "gas_reserve_nano_ton",
+    )?;
+
+    let controller_reserve_nano: u128 = parse_nano_ton(
+        &ton_decimal_string_to_nano_ton(&controller_reserve_ton.normalize().to_string())?,
+        "controller_reserve_nano_ton",
+    )?;
+
+    let customer_total_nano = expert_amount_nano
+        .checked_add(platform_fee_nano)
+        .and_then(|v| v.checked_add(gas_reserve_nano))
+        .and_then(|v| v.checked_add(controller_reserve_nano))
+        .ok_or_else(|| "customer total nanoTON overflow".to_string())?;
+
+    // Defence-in-depth: re-check the integer sum matches
+    if customer_total_nano
+        != expert_amount_nano + platform_fee_nano + gas_reserve_nano + controller_reserve_nano
+    {
+        return Err("internal split inconsistency before calling TON Worker".to_string());
+    }
 
     let prepare_payload = TonController::build_create_booking_contract_request(
         &saved_booking,
         &saved_payment,
         &expert,
-        escrow_amount_ton_string.clone(),
+        expert_amount_nano.to_string(),
+        platform_fee_nano.to_string(),
+        gas_reserve_nano.to_string(),
+        controller_reserve_nano.to_string(),
         "TON".to_string(),
     )?;
 
@@ -843,25 +1075,36 @@ pub async fn begin_booking_payment(
     let session_outcome_deadline_unix =
         prepare_payload.session_outcome_deadline_unix;
 
+    let ton_client = TonWorkerClient::new(
+        state.config.ton_worker_base_url.clone(),
+        state.config.ton_worker_auth_token.clone(),
+    );
+    let ton_controller = TonController::new(ton_client);
+
     let contract = ton_controller
         .create_booking_contract(prepare_payload)
         .await?;
 
-    let escrow_amount_nano_ton =
-        ton_decimal_string_to_nano_ton(&escrow_amount_ton_string)?;
-
     let mut payment_model: payments::ActiveModel = saved_payment.clone().into();
+
     payment_model.contract_address = Set(Some(contract.contract_address.clone()));
     payment_model.transaction_ref = Set(Some(format!(
         "prepared:{}",
         contract.contract_address
     )));
+
     payment_model.updated_at = Set(now);
+
+    let expert_amount_ton_string = expert_amount_ton.normalize().to_string();
+    let platform_fee_ton_string = platform_fee_ton.normalize().to_string();
+    let gas_reserve_ton_string = gas_reserve_ton.normalize().to_string();
+    let controller_reserve_ton_string = controller_reserve_ton.normalize().to_string();
+    let customer_total_ton_string = customer_total_ton.normalize().to_string();
 
     let updated_payment = payment_model
         .update(&state.db)
         .await
-        .map_err(|e| format!("failed to store TON contract data: {e}"))?;
+        .map_err(|e| format!("failed to update payment: {e}"))?;
 
     let mut metadata = saved_booking.metadata.clone().unwrap_or_else(|| json!({}));
 
@@ -874,13 +1117,30 @@ pub async fn begin_booking_payment(
             "ton_payment".to_string(),
             json!({
                 "contract_address": contract.contract_address.clone(),
-                "escrow_amount_ton": escrow_amount_ton_string.clone(),
-                "escrow_amount_nano_ton": escrow_amount_nano_ton.clone(),
+
+                "hourly_rate_snapshot_usd": saved_booking.hourly_rate_snapshot,
+                "requested_duration_minutes": saved_booking.requested_duration_minutes,
+                "amount_quoted_usd": saved_booking.amount_quoted,
+                "booking_currency": saved_booking.currency.clone(),
+
+                "expert_amount_ton": expert_amount_ton_string.clone(),
+                "platform_fee_ton": platform_fee_ton_string.clone(),
+                "gas_reserve_ton": gas_reserve_ton_string.clone(),
+                "controller_reserve_ton": controller_reserve_ton_string.clone(),
+                "customer_total_ton": customer_total_ton_string.clone(),
+
+                "expert_amount_nano_ton": expert_amount_nano.to_string(),
+                "platform_fee_nano_ton": platform_fee_nano.to_string(),
+                "gas_reserve_nano_ton": gas_reserve_nano.to_string(),
+                "controller_reserve_nano_ton": controller_reserve_nano.to_string(),
+                "customer_total_nano_ton": customer_total_nano.to_string(),
+                "expert_confirmation_deadline_unix": expert_confirmation_deadline_unix,
+                "session_outcome_deadline_unix": session_outcome_deadline_unix,
+
                 "wallet_send_amount_nano_ton": contract.amount_nano_ton.clone(),
                 "recommended_gas_buffer_nano_ton": contract.recommended_gas_buffer_nano_ton.clone(),
                 "total_deploy_value_nano_ton": contract.total_deploy_value_nano_ton.clone(),
-                "expert_confirmation_deadline_unix": expert_confirmation_deadline_unix,
-                "session_outcome_deadline_unix": session_outcome_deadline_unix
+                "state_init_boc": contract.state_init_boc.clone()
             }),
         );
     }
@@ -901,6 +1161,8 @@ pub async fn begin_booking_payment(
         destination_address: contract.contract_address.clone(),
         state_init_boc: contract.state_init_boc.clone(),
         amount_nano_ton: contract.amount_nano_ton.clone(),
+        customer_total_ton: customer_total_ton.normalize().to_string(),
+        customer_total_nano_ton: customer_total_nano.to_string(),
         recommended_gas_buffer_nano_ton: contract.recommended_gas_buffer_nano_ton.clone(),
         total_deploy_value_nano_ton: contract.total_deploy_value_nano_ton.clone(),
         payment_status: updated_payment.status,
@@ -941,6 +1203,41 @@ pub async fn confirm_booking_payment(
         .map_err(|e| format!("failed to load payment: {e}"))?
         .ok_or_else(|| "payment not found".to_string())?;
 
+    if booking.status == BOOKING_STATUS_FUNDED
+        && payment.status == PAYMENT_STATUS_FUNDED
+    {
+        return Ok(ConfirmBookingPaymentResponse {
+            booking_id: booking.id,
+            payment_id: payment.id,
+            booking_status: booking.status,
+            payment_status: payment.status,
+            contract_address: payment.contract_address.clone().unwrap(),
+            transaction_ref: payment.transaction_ref.clone(),
+            verified: true,
+            contract_state: None,
+            account_state: "already_funded".to_string(),
+            balance_nano_ton: "0".to_string(),
+        });
+    }
+
+    if booking.status == BOOKING_STATUS_WAITING_FOR_SESSION {
+        return Ok(ConfirmBookingPaymentResponse {
+            booking_id: booking.id,
+            payment_id: payment.id,
+            booking_status: booking.status,
+            payment_status: payment.status,
+            contract_address: payment
+                .contract_address
+                .clone()
+                .unwrap_or_default(),
+            transaction_ref: payment.transaction_ref.clone(),
+            verified: true,
+            contract_state: None,
+            account_state: "waiting_for_session".to_string(),
+            balance_nano_ton: "0".to_string(),
+        });
+    }
+
     let contract_address = payment
         .contract_address
         .clone()
@@ -977,8 +1274,10 @@ pub async fn confirm_booking_payment(
         .map_err(|e| format!("failed to load expert: {e}"))?
         .ok_or_else(|| "expert not found".to_string())?;
 
-    let expected_escrow_amount_nano_ton =
-        expected_escrow_amount_nano_ton_from_booking(&booking)?;
+    let ton_payment = TonPaymentMetadata::from_booking(&booking)?;
+
+    let expected_customer_total_nano_ton =
+        ton_payment.customer_total_nano_ton;
 
     for attempt in 0..15 {
         let contract_state = ton_controller
@@ -986,53 +1285,96 @@ pub async fn confirm_booking_payment(
             .await?;
 
         if contract_state.is_funded {
+            if !was_already_funded {
+                if !claim_funded(&state.db, booking.id).await? {
+                    // Another request already processed this payment.
+
+                    let booking = bookings::Entity::find_by_id(booking.id)
+                        .one(&state.db)
+                        .await
+                        .map_err(|e| format!("failed to reload booking: {e}"))?
+                        .ok_or_else(|| "booking not found".to_string())?;
+
+                    let payment = payments::Entity::find()
+                        .filter(payments::Column::BookingId.eq(booking.id))
+                        .one(&state.db)
+                        .await
+                        .map_err(|e| format!("failed to reload payment: {e}"))?
+                        .ok_or_else(|| "payment not found".to_string())?;
+
+                    return Ok(ConfirmBookingPaymentResponse {
+                        booking_id: booking.id,
+                        payment_id: payment.id,
+                        booking_status: booking.status,
+                        payment_status: payment.status,
+                        contract_address: contract_address.clone(),
+                        transaction_ref: payment.transaction_ref.clone(),
+                        verified: true,
+                        contract_state: contract_state.contract_state,
+                        account_state: contract_state.account_state.clone(),
+                        balance_nano_ton: contract_state.balance_nano_ton.clone(),
+                    });
+                }
+            }
+
             let contract_amount_nano_ton = contract_state
                 .contract_amount_nano_ton
                 .as_deref()
                 .ok_or_else(|| "contract state is missing contract_amount_nano_ton".to_string())
                 .and_then(|value| parse_nano_ton(value, "contract amount"))?;
 
-            if contract_amount_nano_ton != expected_escrow_amount_nano_ton {
+            if contract_amount_nano_ton != expected_customer_total_nano_ton {
                 return Err(format!(
-                    "contract amount check failed: contract amount {} nanoTON does not match expected escrow amount {} nanoTON",
+                    "contract amount check failed: contract amount {} nanoTON does not match expected customer total {} nanoTON",
                     contract_amount_nano_ton,
-                    expected_escrow_amount_nano_ton
+                    expected_customer_total_nano_ton
                 ));
             }
 
             let actual_balance_nano_ton =
                 parse_nano_ton(&contract_state.balance_nano_ton, "contract balance")?;
 
-            if actual_balance_nano_ton < expected_escrow_amount_nano_ton {
+            let minimum_required_balance =
+                expected_customer_total_nano_ton * (10_000 - BALANCE_TOLERANCE_BPS) / 10_000;
+
+            if actual_balance_nano_ton < minimum_required_balance {
                 return Err(format!(
-                    "contract is funded but balance check failed: contract balance {} nanoTON is below expected escrow amount {} nanoTON",
+                    "contract is funded but balance check failed: contract balance {} nanoTON is below minimum allowed {} nanoTON (expected {}, tolerance 0.3%)",
                     actual_balance_nano_ton,
-                    expected_escrow_amount_nano_ton
+                    minimum_required_balance,
+                    expected_customer_total_nano_ton,
                 ));
             }
 
-            let expert_response_expires_at =
-                read_expert_confirmation_deadline_from_metadata(&booking)?;
+            let expert_response_expires_at = ton_payment.expert_confirmation_deadline;
 
             let mut booking_model: bookings::ActiveModel = booking.clone().into();
             booking_model.status = Set(BOOKING_STATUS_FUNDED.to_string());
             booking_model.expires_at = Set(expert_response_expires_at);
             booking_model.updated_at = Set(now);
 
+            let mut payment_model: payments::ActiveModel = payment.clone().into();
+            payment_model.status = Set(PAYMENT_STATUS_FUNDED.to_string());
+            payment_model.updated_at = Set(now);
+
+            let txn = state.db
+                .begin()
+                .await
+                .map_err(|e| format!("failed to begin transaction: {e}"))?;
+
             let updated_booking = booking_model
-                .update(&state.db)
+                .update(&txn)
                 .await
                 .map_err(|e| format!("failed to mark booking funded: {e}"))?;
 
-            let mut payment_model: payments::ActiveModel = payment.clone().into();
-            payment_model.status = Set(PAYMENT_STATUS_FUNDED.to_string());
-            payment_model.transaction_ref = Set(Some(tx_ref.clone()));
-            payment_model.updated_at = Set(now);
-
             let updated_payment = payment_model
-                .update(&state.db)
+                .update(&txn)
                 .await
                 .map_err(|e| format!("failed to mark payment funded: {e}"))?;
+
+            txn.commit()
+                .await
+                .map_err(|e| format!("failed to commit transaction: {e}"))?;
 
             if !was_already_funded {
                 let bot = TelegramBotClient::new(state.config.active_telegram_bot_token.clone());
@@ -1106,4 +1448,73 @@ pub async fn confirm_booking_payment(
         account_state: state_snapshot.account_state,
         balance_nano_ton: state_snapshot.balance_nano_ton,
     })
+}
+
+async fn contract_already_in_state(
+    ton: &TonController,
+    contract_address: &str,
+    expected_state: i32,
+) -> Result<bool, String> {
+    let state = ton.get_booking_contract_state(contract_address).await?;
+    Ok(state.contract_state == Some(expected_state))
+}
+
+async fn claim_processing(
+    db: &DatabaseConnection,
+    booking_id: i64,
+) -> Result<bool, String> {
+    let now = Utc::now().fixed_offset();
+
+    let result = bookings::Entity::update_many()
+        .col_expr(
+            bookings::Column::Status,
+            Expr::value(BOOKING_STATUS_PROCESSING),
+        )
+        .col_expr(
+            bookings::Column::UpdatedAt,
+            Expr::value(now),
+        )
+        .filter(bookings::Column::Id.eq(booking_id))
+        .filter(bookings::Column::Status.eq(BOOKING_STATUS_FUNDED))
+        .exec(db)
+        .await
+        .map_err(|e| format!("failed to claim booking: {e}"))?;
+
+    Ok(result.rows_affected == 1)
+}
+
+async fn rollback_processing_to_funded(
+    db: &DatabaseConnection,
+    booking_id: i64,
+) -> Result<(), String> {
+    bookings::Entity::update_many()
+        .col_expr(
+            bookings::Column::Status,
+            Expr::value(BOOKING_STATUS_FUNDED),
+        )
+        .filter(bookings::Column::Id.eq(booking_id))
+        .filter(bookings::Column::Status.eq(BOOKING_STATUS_PROCESSING))
+        .exec(db)
+        .await
+        .map_err(|e| format!("failed to rollback booking claim: {e}"))?;
+
+    Ok(())
+}
+
+async fn claim_funded(
+    db: &DatabaseConnection,
+    booking_id: i64,
+) -> Result<bool, String> {
+    let result = bookings::Entity::update_many()
+        .col_expr(
+            bookings::Column::Status,
+            Expr::value(BOOKING_STATUS_FUNDED),
+        )
+        .filter(bookings::Column::Id.eq(booking_id))
+        .filter(bookings::Column::Status.eq(BOOKING_STATUS_AWAITING_PAYMENT))
+        .exec(db)
+        .await
+        .map_err(|e| format!("failed to update bookings: {e}"))?;
+
+    Ok(result.rows_affected == 1)
 }

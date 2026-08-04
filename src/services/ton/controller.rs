@@ -1,5 +1,3 @@
-use chrono::{Duration, Utc};
-
 use crate::entities::{
     bookings,
     experts,
@@ -34,7 +32,10 @@ impl TonController {
         booking: &bookings::Model,
         payment: &payments::Model,
         expert: &experts::Model,
-        amount: String,
+        expert_amount_nano_ton: String,
+        platform_fee_nano_ton: String,
+        gas_reserve_nano_ton: String,
+        controller_reserve_nano_ton: String,
         currency: String,
     )-> Result<CreateBookingContractRequest, String> {
         fn map_wallet_for_ton_testnet(wallet: &str) -> String {
@@ -60,29 +61,32 @@ impl TonController {
                 .clone()
                 .ok_or_else(|| "customer TON wallet is missing on booking".to_string())?;
 
-            let slot_start_unix = booking.slot_start.timestamp();
+         let slot_start_unix = booking.slot_start.timestamp();
 
-            let expert_confirmation_deadline_unix =
+         let expert_confirmation_deadline_unix =
                 calculate_expert_confirmation_deadline(booking.slot_start)?
                     .timestamp();
 
-            let session_outcome_deadline_unix =
+         let session_outcome_deadline_unix =
                 calculate_session_outcome_deadline(booking.slot_end)?
                     .timestamp();
 
-           Ok(CreateBookingContractRequest {
-               booking_id: booking.id,
-               payment_id: payment.id,
-               customer_telegram_id: booking.requested_by_telegram_id,
-               expert_telegram_id: expert.telegram_id,
-               customer_wallet: map_wallet_for_ton_testnet(&customer_wallet),
-               expert_wallet: map_wallet_for_ton_testnet(&expert.ton_wallet_address),
-               amount,
-               currency,
-               slot_start_unix,
-               expert_confirmation_deadline_unix,
-               session_outcome_deadline_unix,
-           })
+        Ok(CreateBookingContractRequest {
+            booking_id: booking.id,
+            payment_id: payment.id,
+            customer_telegram_id: booking.requested_by_telegram_id,
+            expert_telegram_id: expert.telegram_id,
+            customer_wallet: map_wallet_for_ton_testnet(&customer_wallet),
+            expert_wallet: map_wallet_for_ton_testnet(&expert.ton_wallet_address),
+            expert_amount_nano_ton,
+            platform_fee_nano_ton,
+            gas_reserve_nano_ton,
+            controller_reserve_nano_ton,
+            currency,
+            slot_start_unix,
+            expert_confirmation_deadline_unix,
+            session_outcome_deadline_unix,
+        })
     }
 
     pub async fn create_booking_contract(

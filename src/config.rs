@@ -1,4 +1,5 @@
 use std::env;
+use rust_decimal::Decimal;
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -16,6 +17,10 @@ pub struct AppConfig {
     pub ton_worker_base_url: String,
     pub ton_worker_auth_token: String,
     pub telegram_webhook_secret_token: String,
+
+    pub platform_fee_percent: Decimal,
+    pub ton_gas_reserve: Decimal,
+    pub ton_controller_action_reserve: Decimal,
 }
 
 impl AppConfig {
@@ -82,6 +87,24 @@ impl AppConfig {
             .trim()
             .to_string();
 
+        let platform_fee_percent = env::var("PLATFORM_FEE_PERCENT")
+            .unwrap_or_else(|_| "1.0".to_string())
+            .trim()
+            .parse::<Decimal>()
+            .expect("PLATFORM_FEE_PERCENT must be a valid decimal number");
+
+        let ton_gas_reserve = env::var("TON_GAS_RESERVE")
+            .unwrap_or_else(|_| "0.02".to_string())
+            .trim()
+            .parse::<Decimal>()
+            .expect("TON_GAS_RESERVE must be a valid decimal number");
+
+        let ton_controller_action_reserve = env::var("TON_CONTROLLER_ACTION_RESERVE")
+            .unwrap_or_else(|_| "0.05".to_string())
+            .trim()
+            .parse::<Decimal>()
+            .expect("TON_CONTROLLER_ACTION_RESERVE must be a valid decimal number");
+
         Self {
             host,
             port,
@@ -95,6 +118,9 @@ impl AppConfig {
             ton_worker_base_url,
             ton_worker_auth_token,
             telegram_webhook_secret_token,
+            platform_fee_percent,
+            ton_gas_reserve,
+            ton_controller_action_reserve,
         }
     }
 }

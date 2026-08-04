@@ -56,6 +56,10 @@ jobs:
             export TON_WORKER_BASE_URL="${{ secrets.TON_WORKER_BASE_URL }}";
             export TON_WORKER_AUTH_TOKEN="${{ secrets.TON_WORKER_AUTH_TOKEN }}";
             export TELEGRAM_WEBHOOK_SECRET_TOKEN="${{ secrets.TELEGRAM_WEBHOOK_SECRET_TOKEN }}";
+          
+            export PLATFORM_FEE_PERCENT="${{ secrets.PLATFORM_FEE_PERCENT }}";
+            export TON_GAS_RESERVE="${{ secrets.TON_GAS_RESERVE }}";
+            export TON_CONTROLLER_ACTION_RESERVE="${{ secrets.TON_CONTROLLER_ACTION_RESERVE }}";
 
             chmod +x /opt/deploy.sh;
             bash /opt/deploy.sh;

@@ -9,7 +9,11 @@ pub struct CreateBookingContractRequest {
     pub customer_wallet: String,
     pub expert_wallet: String,
 
-    pub amount: String,
+    pub expert_amount_nano_ton: String,
+    pub platform_fee_nano_ton: String,
+    pub gas_reserve_nano_ton: String,
+    pub controller_reserve_nano_ton: String,
+
     pub currency: String,
 
     pub slot_start_unix: i64,
@@ -19,9 +23,10 @@ pub struct CreateBookingContractRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateBookingContractResponse {
-    pub contract_address: String,
+pub contract_address: String,
     pub state_init_boc: String,
-    pub amount_nano_ton: String,
+    pub amount_nano_ton: String,              // what the wallet must send (= customer_total + optional extra buffer)
+    pub customer_total_nano_ton: String,       // pure sum of the four components
     pub recommended_gas_buffer_nano_ton: String,
     pub total_deploy_value_nano_ton: String,
 }
